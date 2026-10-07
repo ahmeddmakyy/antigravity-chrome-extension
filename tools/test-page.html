@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antigravity Browser Agent - Test Suite Page</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --danger: #ef4444;
+      --success: #22c55e;
+    }
+    body {
+      margin: 0;
+      padding: 32px 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 16px;
+    }
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 26px;
+      color: var(--accent);
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    button, .btn {
+      padding: 10px 16px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.2s ease;
+    }
+    button:hover, .btn:hover {
+      background: var(--accent-hover);
+      color: #fff;
+    }
+    .btn-danger {
+      background: var(--danger);
+      color: #fff;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    input[type="text"], input[type="email"], input[type="password"], input[type="number"], select {
+      padding: 10px 12px;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+    }
+    .inner-scroll-box {
+      height: 150px;
+      overflow-y: scroll;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .scroll-item {
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .log-display {
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #38bdf8;
+      min-height: 40px;
+      white-space: pre-wrap;
+    }
+    .controlled-display {
+      font-size: 13px;
+      color: var(--accent);
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Antigravity Browser Tools Test Rig</h1>
+      <p>Target verification page for CDP automation: click, type, scroll, tab groups, accessibility tree, and security enforcement.</p>
+    </header>
+
+    <div class="grid">
+      <!-- 1. Click & Counter -->
+      <div class="card">
+        <div class="card-title">
+          <span>1. Click & Counter Test</span>
+          <span style="font-size: 12px; color: var(--muted);">CDP Click</span>
+        </div>
+        <p>Click counter button to test CDP Input.dispatchMouseEvent:</p>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <button id="counterBtn" aria-label="Increment Counter Button">Click Me (Clicks: 0)</button>
+          <button id="resetCounterBtn" class="btn-danger" aria-label="Reset Counter">Reset</button>
+        </div>
+        <div id="clickLog" class="log-display">No click recorded yet.</div>
+      </div>
+
+      <!-- 2. React-Style Controlled Input -->
+      <div class="card">
+        <div class="card-title">
+          <span>2. React-Style Controlled Input</span>
+          <span style="font-size: 12px; color: var(--muted);">CDP KeyEvent</span>
+        </div>
+        <div class="form-group">
+          <label for="controlledInput">Controlled Text Input (updates virtual state on keystrokes):</label>
+          <input type="text" id="controlledInput" placeholder="Type here via CDP..." aria-label="Controlled Input">
+        </div>
+        <div class="controlled-display" id="controlledOutput">State: "" (Length: 0)</div>
+      </div>
+
+      <!-- 3. Form & Sensitive Input -->
+      <div class="card">
+        <div class="card-title">
+          <span>3. Form & Security Blocklist</span>
+          <span style="font-size: 12px; color: var(--danger);">Protected Fields</span>
+        </div>
+        <div class="form-group">
+          <label for="userEmail">Standard Email:</label>
+          <input type="email" id="userEmail" placeholder="test@antigravity.local" aria-label="Email Input">
+        </div>
+        <div class="form-group">
+          <label for="userPassword">Password (Protected by Security Policy):</label>
+          <input type="password" id="userPassword" placeholder="••••••••" aria-label="Password Input">
+        </div>
+        <div class="form-group">
+          <label for="userRole">Dropdown Select:</label>
+          <select id="userRole" aria-label="Select Role">
+            <option value="developer">Developer</option>
+            <option value="designer">Designer</option>
+            <option value="researcher">Researcher</option>
+          </select>
+        </div>
+        <button id="submitFormBtn" aria-label="Submit Form">Submit Form</button>
+        <div id="formLog" class="log-display">Ready for input.</div>
+      </div>
+
+      <!-- 4. Inner Container Scrolling -->
+      <div class="card">
+        <div class="card-title">
+          <span>4. Inner Scroll Container</span>
+          <span style="font-size: 12px; color: var(--muted);">CDP MouseWheel</span>
+        </div>
+        <p>A scrollable box with inner overflow (fails with window.scrollBy):</p>
+        <div id="innerScrollBox" class="inner-scroll-box" aria-label="Scrollable list container">
+          <div class="scroll-item">Item #1: Starting anchor</div>
+          <div class="scroll-item">Item #2: Scroll test row</div>
+          <div class="scroll-item">Item #3: Intermediate item</div>
+          <div class="scroll-item">Item #4: Midpoint element</div>
+          <div class="scroll-item">Item #5: Deeper row</div>
+          <div class="scroll-item">Item #6: Almost there</div>
+          <div class="scroll-item">Item #7: Penultimate row</div>
+          <div class="scroll-item" id="targetScrollItem" style="background: rgba(56, 189, 248, 0.2); border: 1px dashed var(--accent);">Item #8: Target reached! 🎯</div>
+          <div class="scroll-item">Item #9: Deep bottom row</div>
+          <div class="scroll-item">Item #10: Final boundary item</div>
+        </div>
+        <div id="scrollLog" class="log-display">Scroll position: Top (0px)</div>
+      </div>
+
+      <!-- 5. Dynamic Content & Wait -->
+      <div class="card">
+        <div class="card-title">
+          <span>5. Dynamic Elements (Wait Test)</span>
+          <span style="font-size: 12px; color: var(--muted);">Condition Wait</span>
+        </div>
+        <button id="spawnBtn" aria-label="Spawn Async Element">Spawn Element after 2s delay</button>
+        <div id="spawnContainer" style="min-height: 40px; display: flex; align-items: center;"></div>
+      </div>
+
+      <!-- 6. Console & Network Logging -->
+      <div class="card">
+        <div class="card-title">
+          <span>6. Console & Network Tests</span>
+          <span style="font-size: 12px; color: var(--muted);">read_console / read_network</span>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button id="logConsoleBtn" aria-label="Trigger Console Log">Log to Console</button>
+          <button id="logErrorBtn" class="btn-danger" aria-label="Trigger Console Error">Log Error</button>
+          <button id="fetchDataBtn" aria-label="Trigger Fetch Request">Simulate Fetch</button>
+        </div>
+        <div id="diagnosticLog" class="log-display">Ready.</div>
+      </div>
+
+      <!-- 7. File Upload Input -->
+      <div class="card">
+        <div class="card-title">
+          <span>7. File Upload Field</span>
+          <span style="font-size: 12px; color: var(--muted);">upload_file</span>
+        </div>
+        <div class="form-group">
+          <label for="testFileInput">Select or Upload File via CDP:</label>
+          <input type="file" id="testFileInput" aria-label="File Upload Input">
+        </div>
+        <div id="fileUploadLog" class="log-display">No file selected.</div>
+      </div>
+
+      <!-- 8. Multi-tab Navigation -->
+      <div class="card">
+        <div class="card-title">
+          <span>8. Tab Management Test</span>
+          <span style="font-size: 12px; color: var(--muted);">tabs_create / groups</span>
+        </div>
+        <p>Links that open in a new tab to verify automatic tab group inclusion:</p>
+        <div style="display: flex; gap: 10px;">
+          <a href="https://example.com" target="_blank" class="btn" style="text-decoration: none; display: inline-block;">Open Example.com</a>
+          <a href="https://httpbin.org/get" target="_blank" class="btn" style="text-decoration: none; display: inline-block;">Open Httpbin</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 1. Counter Logic
+    let clickCount = 0;
+    const counterBtn = document.getElementById("counterBtn");
+    const resetCounterBtn = document.getElementById("resetCounterBtn");
+    const clickLog = document.getElementById("clickLog");
+
+    counterBtn.addEventListener("click", () => {
+      clickCount++;
+      counterBtn.textContent = `Click Me (Clicks: ${clickCount})`;
+      clickLog.textContent = `Last click registered at: ${new Date().toLocaleTimeString()} (Count: ${clickCount})`;
+    });
+
+    resetCounterBtn.addEventListener("click", () => {
+      clickCount = 0;
+      counterBtn.textContent = "Click Me (Clicks: 0)";
+      clickLog.textContent = "Counter was reset to 0.";
+    });
+
+    // 2. React-Style Controlled Input Mock
+    let inputState = "";
+    const controlledInput = document.getElementById("controlledInput");
+    const controlledOutput = document.getElementById("controlledOutput");
+
+    controlledInput.addEventListener("input", (e) => {
+      inputState = e.target.value;
+      controlledOutput.textContent = `State: "${inputState}" (Length: ${inputState.length})`;
+    });
+
+    // 3. Form Submit
+    const submitFormBtn = document.getElementById("submitFormBtn");
+    const formLog = document.getElementById("formLog");
+    submitFormBtn.addEventListener("click", () => {
+      const email = document.getElementById("userEmail").value;
+      const role = document.getElementById("userRole").value;
+      const passLen = document.getElementById("userPassword").value.length;
+      formLog.textContent = `Submitted! Email: ${email || "empty"} | Role: ${role} | Password length: ${passLen}`;
+    });
+
+    // 4. Scroll Tracking
+    const innerScrollBox = document.getElementById("innerScrollBox");
+    const scrollLog = document.getElementById("scrollLog");
+    innerScrollBox.addEventListener("scroll", () => {
+      scrollLog.textContent = `Scroll position: scrollTop = ${innerScrollBox.scrollTop}px`;
+    });
+
+    // 5. Dynamic Spawn Test
+    const spawnBtn = document.getElementById("spawnBtn");
+    const spawnContainer = document.getElementById("spawnContainer");
+    spawnBtn.addEventListener("click", () => {
+      spawnContainer.innerHTML = '<span style="color:var(--muted)">Waiting 2 seconds...</span>';
+      setTimeout(() => {
+        spawnContainer.innerHTML = `
+          <div id="dynamicTarget" style="padding: 10px 14px; background: rgba(34, 197, 94, 0.2); border: 1px solid var(--success); border-radius: 6px; color: var(--success); font-weight: 600;">
+            ✅ Dynamic element loaded successfully! (id: dynamicTarget)
+          </div>
+        `;
+      }, 2000);
+    });
+
+    // 6. Diagnostics (Console & Network)
+    const logConsoleBtn = document.getElementById("logConsoleBtn");
+    const logErrorBtn = document.getElementById("logErrorBtn");
+    const fetchDataBtn = document.getElementById("fetchDataBtn");
+    const diagnosticLog = document.getElementById("diagnosticLog");
+
+    logConsoleBtn.addEventListener("click", () => {
+      const msg = `[INFO] Test console message dispatched at ${new Date().toISOString()}`;
+      console.log(msg);
+      diagnosticLog.textContent = `Dispatched console.log: ${msg}`;
+    });
+
+    logErrorBtn.addEventListener("click", () => {
+      const msg = `[ERROR] Simulated error dispatched at ${new Date().toISOString()}`;
+      console.error(msg);
+      diagnosticLog.textContent = `Dispatched console.error: ${msg}`;
+    });
+
+    fetchDataBtn.addEventListener("click", async () => {
+      diagnosticLog.textContent = "Sending fetch to /test/sample-data.json...";
+      try {
+        const res = await fetch("data:application/json,{\"status\":\"ok\",\"agent\":\"Antigravity\"}");
+        const data = await res.json();
+        diagnosticLog.textContent = `Fetch response received: ${JSON.stringify(data)}`;
+      } catch (err) {
+        diagnosticLog.textContent = `Fetch failed: ${err.message}`;
+      }
+    });
+
+    // 7. File Upload
+    const testFileInput = document.getElementById("testFileInput");
+    const fileUploadLog = document.getElementById("fileUploadLog");
+    testFileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        fileUploadLog.textContent = `Uploaded file: ${file.name} (${file.size} bytes, type: ${file.type || "unknown"})`;
+      } else {
+        fileUploadLog.textContent = "No file selected.";
+      }
+    });
+  </script>
+</body>
+</html>

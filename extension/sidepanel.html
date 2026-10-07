@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ar" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MyChrome</title>
+  <script src="theme-init.js"></script>
+  <link rel="stylesheet" href="sidepanel.css">
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/purify.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <img src="icons/icon128.png" class="brand-logo" alt="" width="28" height="28">
+        <span class="brand-name">MyChrome</span>
+      </div>
+      <button class="status-pill" id="statusPill" data-state="offline" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="statusPopover">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span class="status-text" id="statusText"></span>
+      </button>
+      <div class="topbar-actions">
+        <button class="icon-btn" id="newChatBtn" type="button" data-i18n-title="newChat"><span data-icon="plus"></span></button>
+        <button class="icon-btn" id="themeBtn" type="button"><span id="themeIcon" data-icon="moon"></span></button>
+        <button class="icon-btn lang-btn" id="langBtn" type="button"><span id="langLabel">EN</span></button>
+        <button class="icon-btn" id="settingsBtn" type="button" data-i18n-title="settings">
+          <span data-icon="settings"></span>
+          <span class="rec-badge" id="recBadge" hidden></span>
+        </button>
+      </div>
+    </header>
+
+    <div class="version-banner" id="versionBanner" hidden></div>
+
+    <div class="popover" id="statusPopover" role="dialog" hidden>
+      <div class="popover-head">
+        <span class="popover-dot" aria-hidden="true"></span>
+        <h2 id="popTitle" dir="auto"></h2>
+      </div>
+      <p class="popover-body" id="popBody" dir="auto"></p>
+      <ul class="checks" id="popChecks"></ul>
+      <div class="popover-actions" id="popActions"></div>
+    </div>
+
+    <main class="chat" id="chat">
+      <section class="hero" id="hero">
+        <h1 class="hero-title" dir="auto" data-i18n="heroTitle"></h1>
+        <p class="hero-sub" dir="auto" data-i18n="heroSub"></p>
+        <div class="welcome-card" id="welcomeCard">
+          <div class="welcome-head">
+            <div class="welcome-title-wrap">
+              <span class="welcome-dot-badge" aria-hidden="true"></span>
+              <h2 class="welcome-title" data-i18n="welcomeTitle"></h2>
+            </div>
+            <span class="welcome-badge" id="welcomeBadge" data-state="offline"></span>
+          </div>
+          <ul class="welcome-list" id="welcomeList">
+            <li class="welcome-item" id="welcomeHelperItem" data-ok="false">
+              <div class="welcome-item-left">
+                <span class="welcome-check-ic" id="welcomeHelperIc"></span>
+                <div class="welcome-item-text">
+                  <span class="welcome-item-name" data-i18n="checkHelper"></span>
+                  <span class="welcome-item-sub" id="welcomeHelperSub"></span>
+                </div>
+              </div>
+              <div class="welcome-item-action" id="welcomeHelperAction"></div>
+            </li>
+            <li class="welcome-item" id="welcomeLinkedItem" data-ok="false">
+              <div class="welcome-item-left">
+                <span class="welcome-check-ic" id="welcomeLinkedIc"></span>
+                <div class="welcome-item-text">
+                  <span class="welcome-item-name" data-i18n="checkLinked"></span>
+                  <span class="welcome-item-sub" id="welcomeLinkedSub"></span>
+                </div>
+              </div>
+              <div class="welcome-item-action" id="welcomeLinkedAction">
+                <button class="pill-btn compact" id="welcomeCopyBtn" type="button"><span data-icon="copy"></span><span data-i18n="copyMychrome"></span></button>
+              </div>
+            </li>
+            <li class="welcome-item" id="welcomeReadyItem" data-ok="false">
+              <div class="welcome-item-left">
+                <span class="welcome-check-ic" id="welcomeReadyIc"></span>
+                <div class="welcome-item-text">
+                  <span class="welcome-item-name" data-i18n="checkReady"></span>
+                  <span class="welcome-item-sub" id="welcomeReadySub"></span>
+                </div>
+              </div>
+              <div class="welcome-item-action" id="welcomeReadyAction"></div>
+            </li>
+          </ul>
+        </div>
+        <div class="setup-card" id="setupCard" hidden></div>
+        <div class="suggestions" id="suggestions"></div>
+      </section>
+      <div class="thread" id="thread" aria-live="polite"></div>
+    </main>
+
+    <button class="jump-btn" id="jumpBtn" type="button" data-i18n-title="jumpLatest" hidden>
+      <span class="jump-arrow" data-icon="arrow-down"></span>
+      <span class="jump-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    </button>
+
+    <footer class="composer-wrap">
+      <div class="plan-dock" id="planDock" hidden></div>
+      <div class="drop-overlay" id="dropOverlay" hidden>
+        <div class="drop-target-box">
+          <span class="drop-icon" data-icon="paperclip"></span>
+          <span class="drop-text" data-i18n="dropFilesHere"></span>
+        </div>
+      </div>
+      <div class="composer" id="composer">
+        <div class="attachment-tray" id="attachmentTray" hidden></div>
+        <textarea id="input" rows="1" dir="auto" data-i18n-ph="composerPlaceholder"></textarea>
+        <div class="composer-bar">
+          <button class="context-pill" id="contextPill" type="button" data-i18n-title="focusTab">
+            <img id="tabFavicon" src="icons/icon32.png" alt="" width="16" height="16">
+            <span class="ctx-domain" id="tabDomain">...</span>
+          </button>
+          <div class="attach-wrap" id="attachWrap">
+            <button class="mini-btn" id="attachBtn" type="button" aria-expanded="false" data-i18n-title="attachBtnTitle"><span data-icon="paperclip"></span></button>
+            <div class="attach-menu" id="attachMenu" hidden>
+              <button type="button" class="attach-menu-item" id="attachUploadBtn">
+                <span data-icon="upload"></span>
+                <span data-i18n="attachUploadFiles"></span>
+              </button>
+              <button type="button" class="attach-menu-item" id="attachShotBtn">
+                <span data-icon="camera"></span>
+                <span data-i18n="attachScreenshot"></span>
+              </button>
+            </div>
+          </div>
+          <input type="file" id="filePicker" multiple style="display:none" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md,.csv,.json,.html,.xml,.docx,.xlsx,.pptx">
+          <span class="bar-spacer"></span>
+          <button class="stop-btn" id="stopBtn" type="button" data-i18n-title="stop" hidden><span class="stop-square" aria-hidden="true"></span></button>
+          <button class="send-btn" id="sendBtn" type="button" disabled data-i18n-title="send"><span data-icon="arrow-up"></span></button>
+        </div>
+      </div>
+      <p class="fine" id="fineText" dir="auto" data-i18n="fineText"></p>
+    </footer>
+  </div>
+
+  <!-- Settings sheet -->
+  <div class="layer" id="settingsLayer" data-open="false">
+    <div class="backdrop" data-close></div>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-head">
+        <h2 id="settingsTitle" data-i18n="settingsTitle"></h2>
+        <button class="icon-btn" type="button" data-close data-i18n-title="close"><span data-icon="x"></span></button>
+      </div>
+      <div class="sheet-body">
+        <div class="group">
+          <div class="group-head">
+            <span class="group-icon logo-icon"><img src="icons/icon32.png" alt="" width="18" height="18"></span>
+            <h3 data-i18n="grpAgent"></h3>
+          </div>
+          <ul class="checks" id="healthChecks"></ul>
+          <button class="pill-btn" id="copySetupBtn" type="button"><span data-icon="terminal"></span><span data-i18n="copySetup"></span></button>
+        </div>
+
+        <div class="group log-group">
+          <div class="group-head">
+            <span class="group-icon" data-icon="log"></span>
+            <div>
+              <h3 data-i18n="grpLog"></h3>
+              <p class="group-help" dir="auto" data-i18n="logHelp"></p>
+            </div>
+          </div>
+          <button class="rec-toggle" id="recToggle" type="button" aria-pressed="false">
+            <span class="rec-dot" aria-hidden="true"></span>
+            <span class="rec-label" id="recLabel"></span>
+            <span class="rec-time" id="recTime"></span>
+          </button>
+          <p class="rec-meta" id="recMeta" dir="auto"></p>
+          <div class="tiles">
+            <button class="tile" id="logViewBtn" type="button"><span class="tile-ic" data-icon="list"></span><span data-i18n="logView"></span></button>
+            <button class="tile" id="logCopyBtn" type="button"><span class="tile-ic" data-icon="copy"></span><span data-i18n="logCopy"></span></button>
+            <button class="tile" id="logExportBtn" type="button"><span class="tile-ic" data-icon="download"></span><span data-i18n="logExport"></span></button>
+            <button class="tile danger" id="logClearBtn" type="button"><span class="tile-ic" data-icon="trash"></span><span data-i18n="logClear"></span></button>
+          </div>
+          <label class="switch-row"><span dir="auto" data-i18n="verbose"></span><input type="checkbox" class="switch" id="verboseSwitch"></label>
+          <p class="fine-print" dir="auto" data-i18n="logWarning"></p>
+        </div>
+
+        <div class="group">
+          <div class="group-head"><span class="group-icon" data-icon="plug"></span><h3 data-i18n="grpConnection"></h3></div>
+          <p class="group-help" dir="auto" data-i18n="connectionHelp"></p>
+          <details class="advanced-details">
+            <summary class="advanced-summary">
+              <span data-i18n="advancedSettings"></span>
+              <span data-icon="chevron-down" class="accordion-arrow"></span>
+            </summary>
+            <div class="advanced-content">
+              <label class="field"><span data-i18n="port"></span><input id="portInput" type="number" min="1" max="65535" inputmode="numeric"></label>
+              <label class="field">
+                <span data-i18n="token"></span>
+                <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="Optional for extension">
+                <small dir="auto" data-i18n="tokenOptionalHelp"></small>
+              </label>
+            </div>
+          </details>
+        </div>
+
+        <div class="group">
+          <div class="group-head"><span class="group-icon" data-icon="shield"></span><h3 data-i18n="grpSafety"></h3></div>
+          <label class="field"><span data-i18n="blocklist"></span><textarea id="blocklistInput" rows="2" dir="ltr"></textarea><small dir="auto" data-i18n="blocklistHelp"></small></label>
+        </div>
+
+        <div class="group">
+          <div class="group-head"><span class="group-icon" data-icon="sparkles"></span><h3 data-i18n="grpDisplay"></h3></div>
+          <label class="switch-row"><span data-i18n="reduceMotion"></span><input type="checkbox" class="switch" id="motionSwitch"></label>
+        </div>
+
+        <div class="group">
+          <button class="danger-btn" id="clearChatBtn" type="button"><span data-icon="trash"></span><span data-i18n="clearChat"></span></button>
+        </div>
+
+        <div class="group about-group">
+          <div class="group-head">
+            <span class="group-icon" data-icon="sparkles"></span>
+            <div>
+              <h3 data-i18n="grpAbout"></h3>
+              <p class="group-help" dir="auto" data-i18n="aboutTagline"></p>
+            </div>
+          </div>
+          <div class="about-card">
+            <div class="about-dev-row">
+              <div class="about-dev-info">
+                <span class="about-dev-label" data-i18n="developedBy"></span>
+                <strong class="about-dev-name">Ahmed Maky</strong>
+              </div>
+              <div class="social-links">
+                <a href="https://www.linkedin.com/in/ahmeddmakyy11" target="_blank" rel="noopener noreferrer" class="social-pill li-pill" title="LinkedIn: ahmeddmakyy11" aria-label="LinkedIn">
+                  <span class="social-icon"><img src="icons/credits/linkedin.svg" alt="" width="20" height="20"></span>
+                  <span class="social-tag">LinkedIn</span>
+                </a>
+                <a href="https://t.me/ahmeddmakyy" target="_blank" rel="noopener noreferrer" class="social-pill tg-pill" title="Telegram: @ahmeddmakyy" aria-label="Telegram">
+                  <span class="social-icon"><img src="icons/credits/telegram.svg" alt="" width="20" height="20"></span>
+                  <span class="social-tag">Telegram</span>
+                </a>
+                <a href="https://ahmeddmakyy.vercel.app" target="_blank" rel="noopener noreferrer" class="social-pill portfolio-pill" title="Portfolio" aria-label="Portfolio">
+                  <span class="social-icon"><img src="icons/credits/portfolio.svg" alt="" width="20" height="20"></span>
+                  <span class="social-tag">Portfolio</span>
+                </a>
+              </div>
+            </div>
+            <div class="about-meta-grid">
+              <div class="about-meta-item">
+                <span class="meta-label" data-i18n="version"></span>
+                <span class="meta-value">5.1.0</span>
+              </div>
+              <div class="about-meta-item">
+                <span class="meta-label" data-i18n="license"></span>
+                <span class="meta-value">MIT</span>
+              </div>
+            </div>
+            <div class="about-actions">
+              <button class="pill-btn" id="checkUpdateBtn" type="button">
+                <span data-icon="refresh"></span>
+                <span data-i18n="checkForUpdates"></span>
+              </button>
+              <a href="https://github.com/ahmeddmakyy/antigravity-chrome-extension" target="_blank" rel="noopener noreferrer" class="ghost-btn">
+                <span data-icon="github"></span>
+                <span data-i18n="viewOnGitHub"></span>
+              </a>
+            </div>
+            <p class="about-disclaimer" dir="auto" data-i18n="aboutDisclaimer"></p>
+          </div>
+        </div>
+
+        <p class="version" id="versionText" dir="ltr"></p>
+      </div>
+    </section>
+  </div>
+
+  <!-- Log viewer sheet -->
+  <div class="layer" id="logLayer" data-open="false">
+    <div class="backdrop" data-close></div>
+    <section class="sheet sheet-tall" role="dialog" aria-modal="true" aria-labelledby="logTitle">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-head">
+        <h2 id="logTitle" data-i18n="logViewerTitle"></h2>
+        <span class="count-pill" id="logCount">0</span>
+        <span class="rec-chip" id="logRecChip" hidden><span class="rec-chip-dot"></span><span id="logRecChipTime"></span></span>
+        <button class="icon-btn push-end" type="button" data-close data-i18n-title="close"><span data-icon="x"></span></button>
+      </div>
+      <div class="log-toolbar">
+        <div class="filters" id="logFilters" role="tablist">
+          <button type="button" data-filter="all" class="on" data-i18n="filterAll"></button>
+          <button type="button" data-filter="agent" data-i18n="filterAgent"></button>
+          <button type="button" data-filter="bridge" data-i18n="filterBridge"></button>
+          <button type="button" data-filter="background" data-i18n="filterBrowser"></button>
+          <button type="button" data-filter="panel" data-i18n="filterPanel"></button>
+        </div>
+        <label class="search"><span data-icon="search"></span><input id="logSearch" type="search" dir="auto" data-i18n-ph="searchLog"></label>
+      </div>
+      <div class="log-list" id="logList"></div>
+      <div class="sheet-foot">
+        <button class="rec-toggle compact" id="recToggleMini" type="button" aria-pressed="false">
+          <span class="rec-dot" aria-hidden="true"></span><span class="rec-label" id="recLabelMini"></span>
+        </button>
+        <button class="solid-btn" id="logExportBtn2" type="button"><span data-icon="download"></span><span data-i18n="logExport"></span></button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Confirm dialog -->
+  <div class="layer layer-center" id="confirmLayer" data-open="false">
+    <div class="backdrop" data-close></div>
+    <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <h2 id="confirmTitle" dir="auto"></h2>
+      <p id="confirmBody" dir="auto"></p>
+      <div class="dialog-actions">
+        <button class="ghost-btn" id="confirmCancel" type="button"></button>
+        <button class="solid-btn" id="confirmOk" type="button"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Screenshot viewer -->
+  <div class="layer lightbox" id="lightbox" data-open="false" role="dialog" aria-modal="true">
+    <div class="backdrop" data-close></div>
+    <button class="icon-btn lb-close" type="button" data-close data-i18n-title="close"><span data-icon="x"></span></button>
+    <figure class="lb-figure"><img id="lbImg" alt=""><figcaption id="lbCaption" dir="auto"></figcaption></figure>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

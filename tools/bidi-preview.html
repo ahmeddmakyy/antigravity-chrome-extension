@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antigravity - Bidi & Markdown Preview</title>
+  <link rel="stylesheet" href="../sidepanel.css">
+  <style>
+    body {
+      padding: 24px;
+      margin: 0;
+      background: var(--bg-app);
+      font-family: var(--font-stack);
+      color: var(--text-main);
+    }
+    .preview-container {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-card);
+    }
+    .preview-title {
+      font-size: 18px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .preview-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .ctrl-btn {
+      padding: 8px 14px;
+      background: var(--bg-surface-solid);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-main);
+      transition: all 0.2s ease;
+    }
+    .ctrl-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--c2);
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .sample-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    .sample-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 18px;
+      box-shadow: var(--shadow-card);
+    }
+    .sample-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--c1);
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .sample-box .reply-text {
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .interactive-box {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 768px) {
+      .interactive-box {
+        grid-template-columns: 1fr;
+      }
+    }
+    .interactive-input {
+      width: 100%;
+      height: 160px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      background: var(--bg-surface-solid);
+      color: var(--text-main);
+      font-family: monospace;
+      font-size: 13px;
+      resize: vertical;
+      box-sizing: border-box;
+      outline: none;
+    }
+    .interactive-input:focus {
+      border-color: var(--c2);
+      box-shadow: 0 0 0 2px rgba(184, 146, 255, 0.2);
+    }
+    .preview-render {
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      background: var(--bg-surface-solid);
+      padding: 14px;
+      min-height: 160px;
+      overflow-y: auto;
+    }
+    table.preview-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 13px;
+    }
+    table.preview-table th, table.preview-table td {
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      text-align: inherit;
+    }
+    table.preview-table th {
+      background: var(--bg-hover);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-container">
+    <div class="preview-header">
+      <div class="preview-title">
+        <svg width="24" height="24" viewBox="0 0 100 100" fill="none">
+          <circle cx="50" cy="50" r="46" stroke="var(--c2)" stroke-width="4" stroke-dasharray="8 6"/>
+          <path d="M 22 75 C 32 30, 68 30, 78 75" stroke="var(--c1)" stroke-width="6" stroke-linecap="round"/>
+          <circle cx="50" cy="28" r="8" fill="var(--c3)"/>
+        </svg>
+        <span>Antigravity Bidi & Safe Markdown Preview Suite</span>
+      </div>
+      <div class="preview-controls">
+        <button class="ctrl-btn" id="toggleThemeBtn">🌓 وضع المظهر (Dark / Light)</button>
+        <button class="ctrl-btn" id="toggleDirBtn">🌐 تبديل الاتجاه (RTL / LTR)</button>
+      </div>
+    </div>
+
+    <!-- Live Interactive Playground -->
+    <div>
+      <div class="section-title">🧪 المحرر التفاعلي الحي (Live Markdown Playground)</div>
+      <div class="sample-box">
+        <div class="interactive-box">
+          <div>
+            <div class="sample-label">
+              <span>أدخل Markdown للاختبار:</span>
+              <span id="charCount">0 حروف</span>
+            </div>
+            <textarea id="liveInput" class="interactive-input" placeholder="اكتب هنا بالعربي أو الإنجليزي مع أكواد..."></textarea>
+          </div>
+          <div>
+            <div class="sample-label">
+              <span>المعاينة المباشرة (Sanitized Render):</span>
+              <span id="detectedDirTag">DIR: RTL</span>
+            </div>
+            <div id="liveOutput" class="preview-render reply-text"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preset Test Scenarios -->
+    <div class="section-title">📋 سيناريوهات الاختبار القياسية (Pre-configured Test Cases)</div>
+    <div class="sample-grid">
+
+      <!-- Case 1: Pure Arabic -->
+      <div class="sample-box">
+        <div class="sample-label">
+          <span>الحالة 1: نص عربي نقي مع تنسيق غامق وروابط</span>
+          <span>Pure Arabic</span>
+        </div>
+        <div class="message-bubble agent" style="margin: 0; width: 100%;">
+          <div class="reply-text" id="case1"></div>
+        </div>
+      </div>
+
+      <!-- Case 2: Pure English -->
+      <div class="sample-box">
+        <div class="sample-label">
+          <span>الحالة 2: نص إنجليزي تقني مع كود مضمن</span>
+          <span>Pure English (LTR Block)</span>
+        </div>
+        <div class="message-bubble agent" style="margin: 0; width: 100%;">
+          <div class="reply-text" id="case2"></div>
+        </div>
+      </div>
+
+      <!-- Case 3: Mixed text starting with English brand/term -->
+      <div class="sample-box">
+        <div class="sample-label">
+          <span>الحالة 3: جملة عربية تبدأ بمصطلح إنجليزي (Bidi Trap Test)</span>
+          <span>Arabic starting with Latin keyword</span>
+        </div>
+        <div class="message-bubble agent" style="margin: 0; width: 100%;">
+          <div class="reply-text" id="case3"></div>
+        </div>
+      </div>
+
+      <!-- Case 4: Code Block in Arabic explanation -->
+      <div class="sample-box">
+        <div class="sample-label">
+          <span>الحالة 4: كود برمجي محاط بسياق عربي وشرح تقني</span>
+          <span>Fenced Code Block (Strict LTR)</span>
+        </div>
+        <div class="message-bubble agent" style="margin: 0; width: 100%;">
+          <div class="reply-text" id="case4"></div>
+        </div>
+      </div>
+
+      <!-- Case 5: Lists and Structured Output -->
+      <div class="sample-box">
+        <div class="sample-label">
+          <span>الحالة 5: قوائم نقطية وجداول</span>
+          <span>Lists & Tables</span>
+        </div>
+        <div class="message-bubble agent" style="margin: 0; width: 100%;">
+          <div class="reply-text" id="case5"></div>
+        </div>
+      </div>
+
+      <!-- Case 6: Activity Timeline & Cards -->
+      <div class="sample-box">
+        <div class="sample-label">
+          <span>الحالة 6: كروت التأكيد والأنشطة (Activity Timeline & Confirmation Card)</span>
+          <span>UI Components Integration</span>
+        </div>
+        <div class="message-bubble agent" style="margin: 0; width: 100%;">
+          <div class="activity-timeline" style="margin-bottom: 12px;">
+            <div class="timeline-step">
+              <span class="timeline-status-check">✓</span>
+              <span class="timeline-tool-name">تنقل:</span>
+              <span class="timeline-summary">https://github.com/google-labs-code</span>
+            </div>
+            <div class="timeline-step">
+              <span class="timeline-status-check">✓</span>
+              <span class="timeline-tool-name">لقطة شاشة:</span>
+              <span class="timeline-summary">تم التقاط صورة للصفحة بدقة 1280px</span>
+            </div>
+            <div class="timeline-step">
+              <span style="color:var(--c1)">⏳</span>
+              <span class="timeline-tool-name">نقر:</span>
+              <span class="timeline-summary">زر "Clone or download" (ref: e14)</span>
+            </div>
+          </div>
+          <div class="inline-card">
+            <div class="inline-card-title">⚠️ طلب تأكيد إجراء حساس</div>
+            <div class="inline-card-summary">المساعد يطلب إذنك للضغط على زر "Submit Order" وإتمام العملية على موقع المتجر.</div>
+            <div class="inline-card-buttons">
+              <button class="btn-approve">موافق، استمر</button>
+              <button class="btn-deny">إلغاء الإجراء</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Copy of Safe Markdown Renderer from sidepanel.js
+    function renderSafeMarkdown(rawText) {
+      if (!rawText) return "";
+
+      const codeBlocks = [];
+      let processed = rawText.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_m, lang, code) => {
+        const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
+        codeBlocks.push({ lang, code: escapeHTML(code) });
+        return placeholder;
+      });
+
+      processed = escapeHTML(processed);
+
+      // Inline code
+      processed = processed.replace(/`([^`]+)`/g, (_m, inline) => {
+        return `<code dir="ltr">${inline}</code>`;
+      });
+
+      // Bold
+      processed = processed.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+      // Split paragraphs
+      const lines = processed.split("\n\n");
+      const blocksHTML = lines.map(line => {
+        line = line.trim();
+        if (!line) return "";
+
+        if (line.startsWith("__CODE_BLOCK_")) {
+          const idx = parseInt(line.replace(/[^0-9]/g, ""), 10);
+          const b = codeBlocks[idx];
+          return `<pre dir="ltr"><code>${b.code}</code></pre>`;
+        }
+
+        // Table detection
+        if (line.includes("|") && line.split("\n").length >= 2) {
+          const rows = line.split("\n").filter(r => r.trim().startsWith("|") && !r.includes("---"));
+          if (rows.length > 0) {
+            let tableHTML = '<table class="preview-table">';
+            rows.forEach((r, idx) => {
+              const cells = r.split("|").map(c => c.trim()).filter((c, i, a) => i > 0 && i < a.length - 1);
+              const tag = idx === 0 ? "th" : "td";
+              tableHTML += `<tr>${cells.map(c => `<${tag}>${c}</${tag}>`).join("")}</tr>`;
+            });
+            tableHTML += "</table>";
+            return tableHTML;
+          }
+        }
+
+        // Wrap URLs and Latin identifiers in <bdi>
+        line = line.replace(/(https?:\/\/[^\s<]+)/g, '<bdi><a href="$1" target="_blank">$1</a></bdi>');
+        line = line.replace(/\b([a-zA-Z0-9_\-./]{4,})\b/g, '<bdi>$1</bdi>');
+
+        // Letter counting for block direction
+        const arCount = (line.match(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g) || []).length;
+        const latCount = (line.match(/[a-zA-Z]/g) || []).length;
+        const blockDir = arCount >= latCount ? "rtl" : "ltr";
+
+        // Lists
+        if (line.startsWith("- ") || line.startsWith("* ")) {
+          const items = line.split("\n").map(l => `<li>${l.replace(/^[-*]\s+/, "")}</li>`).join("");
+          return `<ul dir="${blockDir}">${items}</ul>`;
+        }
+
+        return `<p dir="${blockDir}">${line.replace(/\n/g, "<br>")}</p>`;
+      });
+
+      return blocksHTML.join("");
+    }
+
+    function escapeHTML(str) {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // Populate Test Cases
+    const testCases = {
+      case1: `أهلاً بك يا أحمد! تم ربط الإضافة بنجاح عبر سيرفر الـ **WebSocket** المحلي. الآن أستطيع قراءة التبويبات وتنفيذ كل الأوامر التي تطلبها بدقة متناهية.
+
+يمكنك زيارة المستودع عبر الرابط التالي: https://github.com/google-labs-code/design.md للاطلاع على التوثيق الرسمي.`,
+      
+      case2: `Connecting to local bridge server on port \`8765\` with pairing token authentication.
+The extension uses Chrome DevTools Protocol (\`CDP\`) via \`chrome.debugger\` to dispatch trusted mouse, keyboard, and scroll events directly into the browser viewport.`,
+
+      case3: `Chrome extension دي متوصلة بالـ agent بتاعك بشكل مباشر. لما تطلب مني **navigate** أو **scroll**، أنا بنفذ الإجراء باستخدام بروتوكول CDP فوراً وبدون أي أزرار أو حيل مزيفة.`,
+
+      case4: `إليك كود معالج الأحداث في السيرفر الوسيط بلغة TypeScript:
+
+\`\`\`typescript
+export function handleToolExecution(tabId: number, command: string) {
+  logger.info(\`[CDP] Dispatching \${command} on tab \${tabId}\`);
+  return wsServer.sendToTab(tabId, { action: command, timestamp: Date.now() });
+}
+\`\`\`
+
+الكود أعلاه يضمن استقرار الاتصال وتشغيل المهام في التبويبة المحددة فقط.`,
+
+      case5: `| الأداة (Tool) | البروتوكول | الحالة |
+| --- | --- | --- |
+| click | CDP Input.dispatchMouseEvent | مفعّلة |
+| type | CDP Input.dispatchKeyEvent | مفعّلة |
+| scroll | CDP mouseWheel | مفعّلة |
+| read_page | Accessibility Tree (AX) | مفعّلة |
+
+- تم فحص شجرة التوافق بالكامل.
+- تم حماية حقول كلمات المرور والبطاقات الائتمانية.
+- يتم تجميع التبويبات تلقائياً داخل مجموعة "Antigravity".`
+    };
+
+    document.getElementById("case1").innerHTML = renderSafeMarkdown(testCases.case1);
+    document.getElementById("case2").innerHTML = renderSafeMarkdown(testCases.case2);
+    document.getElementById("case3").innerHTML = renderSafeMarkdown(testCases.case3);
+    document.getElementById("case4").innerHTML = renderSafeMarkdown(testCases.case4);
+    document.getElementById("case5").innerHTML = renderSafeMarkdown(testCases.case5);
+
+    // Interactive Input
+    const liveInput = document.getElementById("liveInput");
+    const liveOutput = document.getElementById("liveOutput");
+    const charCount = document.getElementById("charCount");
+    const detectedDirTag = document.getElementById("detectedDirTag");
+
+    liveInput.value = `Antigravity الآن متصل وجاهز للعمل!
+جرب كتابة كود هنا:
+\`\`\`javascript
+console.log("Hello from live preview!");
+\`\`\`
+- قائمة نقطية مع رابط: https://example.com
+- كلمة بالإنجليزية وسط سياق عربي: WebSocket server يعمل بكفاءة.`;
+
+    function updateLivePreview() {
+      const val = liveInput.value;
+      charCount.textContent = `${val.length} حروف`;
+      liveOutput.innerHTML = renderSafeMarkdown(val);
+
+      const firstLine = val.trim().split("\n")[0] || "";
+      const arCount = (firstLine.match(/[\u0600-\u06FF]/g) || []).length;
+      const latCount = (firstLine.match(/[a-zA-Z]/g) || []).length;
+      const dir = arCount >= latCount ? "RTL" : "LTR";
+      detectedDirTag.textContent = `DIR: ${dir}`;
+    }
+
+    liveInput.addEventListener("input", updateLivePreview);
+    updateLivePreview();
+
+    // Controls
+    const toggleThemeBtn = document.getElementById("toggleThemeBtn");
+    toggleThemeBtn.addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("data-theme");
+      document.documentElement.setAttribute("data-theme", current === "dark" ? "light" : "dark");
+    });
+
+    const toggleDirBtn = document.getElementById("toggleDirBtn");
+    toggleDirBtn.addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("dir");
+      const next = current === "rtl" ? "ltr" : "rtl";
+      document.documentElement.setAttribute("dir", next);
+      document.documentElement.setAttribute("lang", next === "rtl" ? "ar" : "en");
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="antigravityGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFB23E" />
+      <stop offset="50%" stop-color="#B892FF" />
+      <stop offset="100%" stop-color="#5EEAD4" />
+    </linearGradient>
+    <radialGradient id="dotGrad" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="40%" stop-color="#5EEAD4" />
+      <stop offset="100%" stop-color="#B892FF" />
+    </radialGradient>
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#B892FF" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- Deep space background for stand-alone view, transparent if needed -->
+  <rect width="128" height="128" rx="28" fill="#1B1230" />
+
+  <!-- Upward sweeping parabolic arc (representing Antigravity) -->
+  <path d="M 24 96 C 36 34, 92 34, 104 96 C 96 98, 88 84, 82 72 C 72 52, 56 52, 46 72 C 40 84, 32 98, 24 96 Z"
+        fill="url(#antigravityGrad)"
+        filter="url(#softGlow)" />
+
+  <!-- Orbiting celestial beacon / sphere -->
+  <circle cx="86" cy="38" r="14" fill="url(#dotGrad)" filter="url(#softGlow)" />
+  <circle cx="86" cy="38" r="7" fill="#FFFFFF" opacity="0.9" />
+
+  <!-- Energy trail / orbit accent -->
+  <path d="M 38 82 C 48 48, 80 44, 92 50" 
+        fill="none" 
+        stroke="url(#antigravityGrad)" 
+        stroke-width="3" 
+        stroke-linecap="round" 
+        stroke-dasharray="4 6"
+        opacity="0.6" />
+</svg>

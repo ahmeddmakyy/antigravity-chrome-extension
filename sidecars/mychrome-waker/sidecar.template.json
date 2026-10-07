@@ -1,0 +1,12 @@
+{
+  "display_name": "MyChrome waker",
+  "description": "Delivers messages from the Antigravity Chrome side panel into the linked conversation.",
+  "command": "{{NODE_PATH}}",
+  "args": [
+    "{{WAKER_PATH}}"
+  ],
+  "restart_policy": "always",
+  "env": {
+    "BRIDGE_PORT": "8765"
+  }
+}
