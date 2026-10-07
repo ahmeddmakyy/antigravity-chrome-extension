@@ -335,6 +335,19 @@ if (Test-Path $srcBridgeDist) {
 
 # 4. Token Generation (New token, never copy old shared tokens)
 Write-Step "Securing pairing credentials"
+try {
+    $conn = Get-NetTCPConnection -LocalPort $PORT -ErrorAction SilentlyContinue
+    if ($conn) {
+        $procIds = $conn.OwningProcess | Select-Object -Unique
+        foreach ($pId in $procIds) {
+            if ($pId -gt 0 -and $pId -ne $PID) {
+                Write-WarnMsg "Stopping lingering process holding port $PORT (PID $pId)"
+                Stop-Process -Id $pId -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+} catch {}
+
 if (-not (Test-Path $TokenPath)) {
     $bytes = New-Object byte[] 24
     (New-Object Security.Cryptography.RNGCryptoServiceProvider).GetBytes($bytes)

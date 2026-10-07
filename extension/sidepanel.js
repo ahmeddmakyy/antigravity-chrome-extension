@@ -1956,13 +1956,14 @@ function renderSetupCard(st) {
 
 function renderBanner(st) {
   const banner = $("banner");
-  const showWhenChatting = ["setup", "unlinked", "asleep", "offline"].includes(st) && $("hero").hidden;
+  if (!banner) return;
+  const showWhenChatting = ["setup", "unlinked", "asleep", "offline"].includes(st) && $("hero")?.hidden;
   if (!showWhenChatting) { banner.hidden = true; return; }
   const textKey = { offline: "popOfflineTitle", setup: "popSetupTitle", unlinked: "popUnlinkedBody", asleep: "popAsleepBody" }[st];
   const action = st === "offline" ? ["openSettings", openSettings] : ["copyMychrome", () => copyText("/mychrome")];
   banner.style.setProperty("--dot", STATUS_DOT[st]);
   banner.innerHTML = `<span class="dot"></span><span class="banner-text" dir="auto">${esc(t(textKey))}</span><button type="button" class="pill-btn">${esc(t(action[0]))}</button>`;
-  banner.querySelector("button").addEventListener("click", action[1]);
+  banner.querySelector("button")?.addEventListener("click", action[1]);
   banner.hidden = false;
 }
 
@@ -2547,13 +2548,17 @@ function bindEvents() {
 }
 
 (async function boot() {
-  hydrateIcons();
-  await loadLocales();
-  applyLanguage(state.lang);
-  bindEvents();
-  loadSettings();
-  updateTab();
-  connectPort();
-  renderSendButton();
-  checkGitHubUpdates(false);
+  try {
+    hydrateIcons();
+    await loadLocales();
+    applyLanguage(state.lang);
+    bindEvents();
+    loadSettings();
+    updateTab();
+    connectPort();
+    renderSendButton();
+    checkGitHubUpdates(false);
+  } catch (err) {
+    console.error("[MyChrome] Boot failed:", err);
+  }
 })();

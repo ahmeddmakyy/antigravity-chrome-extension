@@ -237,6 +237,12 @@ cp -r "$EXTRACT_DIR/bridge/dist/." "$BRIDGE_DIR/dist/"
 echo " [OK] Bridge bundle deployed to $BRIDGE_DIR/dist"
 
 # 3. Fresh pairing token
+if command -v fuser >/dev/null 2>&1; then
+  fuser -k 8765/tcp >/dev/null 2>&1 || true
+elif command -v lsof >/dev/null 2>&1; then
+  lsof -ti:8765 | xargs kill -9 2>/dev/null || true
+fi
+
 if [[ ! -f "$TOKEN_FILE" ]]; then
   NEW_TOKEN=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
   echo "$NEW_TOKEN" > "$TOKEN_FILE"
