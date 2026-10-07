@@ -6,7 +6,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/ahmeddmakyy/antigravity-chrome-extension/main/install.sh | bash
 #   ./install.sh --check
 #   ./install.sh --uninstall
-#   ./install.sh --source mychrome-v5.1.0.zip --home-dir /tmp/test-home
+#   ./install.sh --source mychrome-v5.2.0.zip --home-dir /tmp/test-home
 
 set -euo pipefail
 
@@ -295,7 +295,8 @@ cp -r "$EXTRACT_DIR/plugin/." "$MYCHROME_PLUGIN_DIR/"
 
 BRIDGE_ENTRY="$BRIDGE_DIR/dist/index.js"
 HOOK_ENTRY="$BRIDGE_DIR/dist/stop-hook.js"
-WAKER_ENTRY="$BRIDGE_DIR/dist/waker.js"
+# The sidecar runs the long-lived MyChrome helper (port 8765 + wake-up loop).
+WAKER_ENTRY="$BRIDGE_DIR/dist/daemon.js"
 
 # Generate plugin/mcp_config.json
 sed -e "s|{{NODE_PATH}}|$NODE_BIN|g" \

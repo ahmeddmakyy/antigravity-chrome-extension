@@ -163,7 +163,8 @@ describe("Push wake-up (no polling)", { concurrency: 1 }, () => {
   test("messages sent while the agent works ride along with the next tool result", async () => {
     const { server, port } = await makeServer();
     const ext = await connectExtension(port);
-    server.connectPanel(CID); // turn is active now
+    server.connectPanel(CID); // links; the connect turn ends right away (v5.2)
+    server.sendReply("Working on it", "progress"); // the agent is working: a turn is active now
     ext.send("وكمان شوف التعليقات");
     await sleep(100);
     const note = server.takeInterrupts();
@@ -242,9 +243,10 @@ describe("Push wake-up (no polling)", { concurrency: 1 }, () => {
     assert.ok(tools.includes("connect_side_panel"));
     assert.ok(tools.includes("read_panel_messages"));
 
-    // Not set up: legacy instruction
+    // v5.2: never the legacy polling loop, even before anything is set up
     let r = await client.callTool({ name: "reply_to_user", arguments: { text: "x", kind: "final" } });
-    assert.match(r.content[0].text, /wait_for_user_message/);
+    assert.match(r.content[0].text, /end your turn now/);
+    assert.doesNotMatch(r.content[0].text, /call wait_for_user_message\(/);
 
     // Linked + hooks confirmed: end the turn
     server.connectPanel(CID);

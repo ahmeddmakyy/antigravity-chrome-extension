@@ -50,7 +50,7 @@ test("Origin-based authentication and allowlist", async (t) => {
     });
 
     // Send auth with NO token (or empty token)
-    ws.send(JSON.stringify({ type: "auth", extensionId: EXTENSION_ID, extensionVersion: "5.1.0" }));
+    ws.send(JSON.stringify({ type: "auth", extensionId: EXTENSION_ID, extensionVersion: "5.2.0" }));
 
     const authOk = await new Promise((resolve, reject) => {
       ws.on("message", (raw) => {
@@ -62,7 +62,7 @@ test("Origin-based authentication and allowlist", async (t) => {
     });
 
     assert.equal(authOk.type, "auth_ok");
-    assert.equal(authOk.bridgeVersion, "5.1.0");
+    assert.equal(authOk.bridgeVersion, "5.2.0");
     ws.close();
   });
 

@@ -77,6 +77,15 @@ function Write-WarnMsg {
     Write-Host " [WARN] $Message" -ForegroundColor Yellow
 }
 
+# Windows PowerShell 5.1 writes a BOM with "Set-Content -Encoding utf8". JSON readers may reject it,
+# so every JSON file is written through this helper instead (UTF-8 without BOM).
+function Write-Utf8NoBom {
+    param([string]$Path, [string]$Content)
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding $false))
+}
+
 function Backup-File {
     param([string]$Path)
     if (Test-Path $Path) {
@@ -188,7 +197,7 @@ if ($Uninstall) {
             $cfg = Get-Content $ConfigJsonPath -Raw | ConvertFrom-Json
             if ($cfg.sidecars -and $cfg.sidecars."mychrome-waker") {
                 $cfg.sidecars.PSObject.Properties.Remove("mychrome-waker")
-                $cfg | ConvertTo-Json -Depth 20 | Set-Content $ConfigJsonPath -Encoding utf8
+                Write-Utf8NoBom -Path $ConfigJsonPath -Content ($cfg | ConvertTo-Json -Depth 20)
                 Write-Success "Disabled sidecar in $ConfigJsonPath"
             }
         } catch {
@@ -359,6 +368,26 @@ if (-not (Test-Path $TokenPath)) {
 }
 
 # 5. Migration from v3/v4 configurations
+Write-Step "Repairing JSON files written by older installers"
+# MyChrome 5.0 and 5.1 could save these with a UTF-8 BOM, which Antigravity may fail to read.
+$bomCandidates = @(
+    (Join-Path $GeminiDir "antigravity\mcp_config.json"),
+    (Join-Path $ConfigDir "mcp_config.json"),
+    $HooksJsonPath,
+    $ConfigJsonPath,
+    (Join-Path $ConfigDir "sidecars\mychrome-waker\sidecar.json")
+)
+foreach ($f in $bomCandidates) {
+    if (Test-Path $f) {
+        $bytes = [System.IO.File]::ReadAllBytes($f)
+        if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+            Backup-File $f
+            [System.IO.File]::WriteAllBytes($f, $bytes[3..($bytes.Length - 1)])
+            Write-Success "Removed a UTF-8 BOM from $f"
+        }
+    }
+}
+
 Write-Step "Migrating legacy configurations"
 
 # Remove old antigravity-browser-bridge from antigravity/mcp_config.json
@@ -371,7 +400,7 @@ foreach ($mcpCfg in @($AntigravityMcpPath, $ConfigMcpPath)) {
                 $jsonObj = $raw | ConvertFrom-Json
                 if ($jsonObj.mcpServers -and $jsonObj.mcpServers."antigravity-browser-bridge") {
                     $jsonObj.mcpServers.PSObject.Properties.Remove("antigravity-browser-bridge")
-                    $jsonObj | ConvertTo-Json -Depth 10 | Set-Content $mcpCfg -Encoding utf8
+                    Write-Utf8NoBom -Path $mcpCfg -Content ($jsonObj | ConvertTo-Json -Depth 10)
                     Write-Success "Removed deprecated antigravity-browser-bridge from $mcpCfg"
                 }
             }
@@ -390,7 +419,7 @@ if (Test-Path $HooksJsonPath) {
             $jsonObj = $raw | ConvertFrom-Json
             if ($jsonObj."mychrome-bridge") {
                 $jsonObj.PSObject.Properties.Remove("mychrome-bridge")
-                $jsonObj | ConvertTo-Json -Depth 10 | Set-Content $HooksJsonPath -Encoding utf8
+                Write-Utf8NoBom -Path $HooksJsonPath -Content ($jsonObj | ConvertTo-Json -Depth 10)
                 Write-Success "Removed deprecated mychrome-bridge hook from $HooksJsonPath"
             }
         }
@@ -430,7 +459,7 @@ if (Test-Path $mcpTemplate) {
     $content = Get-Content $mcpTemplate -Raw
     $content = $content.Replace("{{NODE_PATH}}", $nodeEscaped)
     $content = $content.Replace("{{BRIDGE_PATH}}", $bridgeEntry)
-    Set-Content -Path $targetMcp -Value $content -Encoding utf8
+    Write-Utf8NoBom -Path $targetMcp -Content $content
     Write-Success "Generated $targetMcp"
 }
 
@@ -443,7 +472,7 @@ if (Test-Path $hooksTemplate) {
     $content = Get-Content $hooksTemplate -Raw
     $content = $content.Replace("{{NODE_PATH}}", $nodeEscaped)
     $content = $content.Replace("{{STOP_HOOK_PATH}}", $hookEntry)
-    Set-Content -Path $targetHooks -Value $content -Encoding utf8
+    Write-Utf8NoBom -Path $targetHooks -Content $content
     Write-Success "Generated $targetHooks"
 }
 
@@ -455,13 +484,14 @@ if (-not (Test-Path $MyChromeSidecarDir)) {
 
 $sidecarTemplate = Join-Path $ExtractSourceDir "sidecars\mychrome-waker\sidecar.template.json"
 $targetSidecar = Join-Path $MyChromeSidecarDir "sidecar.json"
-$wakerEntry = (Join-Path $BridgeDir "dist\waker.js").Replace("\", "/")
+# The sidecar runs the long-lived MyChrome helper (port 8765 + wake-up loop), not only the waker.
+$wakerEntry = (Join-Path $BridgeDir "dist\daemon.js").Replace("\", "/")
 
 if (Test-Path $sidecarTemplate) {
     $content = Get-Content $sidecarTemplate -Raw
     $content = $content.Replace("{{NODE_PATH}}", $nodeEscaped)
     $content = $content.Replace("{{WAKER_PATH}}", $wakerEntry)
-    Set-Content -Path $targetSidecar -Value $content -Encoding utf8
+    Write-Utf8NoBom -Path $targetSidecar -Content $content
     Write-Success "Generated $targetSidecar"
 }
 
@@ -474,7 +504,7 @@ if (Test-Path $ConfigJsonPath) {
             $cfg | Add-Member -MemberType NoteProperty -Name "sidecars" -Value (New-Object PSObject)
         }
         $cfg.sidecars | Add-Member -MemberType NoteProperty -Name "mychrome-waker" -Value (@{ enabled = $true }) -Force
-        $cfg | ConvertTo-Json -Depth 20 | Set-Content $ConfigJsonPath -Encoding utf8
+        Write-Utf8NoBom -Path $ConfigJsonPath -Content ($cfg | ConvertTo-Json -Depth 20)
         Write-Success "Enabled mychrome-waker sidecar in $ConfigJsonPath"
     } catch {
         Write-WarnMsg "Could not update $($ConfigJsonPath): $_"

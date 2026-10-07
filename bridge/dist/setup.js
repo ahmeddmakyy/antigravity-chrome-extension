@@ -8,7 +8,7 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
 // src/version.ts
-var BRIDGE_VERSION = "5.1.0";
+var BRIDGE_VERSION = "5.2.0";
 
 // src/setup.ts
 var __filename = fileURLToPath(import.meta.url);
@@ -62,7 +62,7 @@ function setSessionFlag(setupDone) {
   fs.writeFileSync(file, JSON.stringify({ ...current, setupDone }, null, 2), "utf-8");
 }
 function install() {
-  const waker = path.join(BRIDGE_ROOT, "dist", "waker.js");
+  const waker = path.join(BRIDGE_ROOT, "dist", "daemon.js");
   const hook = path.join(BRIDGE_ROOT, "dist", "stop-hook.js");
   for (const f of [waker, hook]) {
     if (!fs.existsSync(f)) {

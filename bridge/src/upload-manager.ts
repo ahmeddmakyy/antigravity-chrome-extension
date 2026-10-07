@@ -38,8 +38,8 @@ const ALLOWED_EXTENSIONS = new Set([
 export function sanitizeFileName(rawName: string): string {
   if (!rawName || typeof rawName !== "string") return "upload";
 
-  // 1. Strip path components
-  let clean = path.basename(rawName.trim());
+  // 1. Strip path components (both / and \, whatever the OS: names come from the browser)
+  let clean = rawName.trim().split(/[\\/]/).pop() || "";
 
   // 2. Replace forbidden chars (<>:"/\|?* and control characters) with underscore
   clean = clean.replace(/[\x00-\x1f<>:"/\\|?*]/g, "_");

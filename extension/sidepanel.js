@@ -76,7 +76,7 @@ function hydrateIcons(root = document) {
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-const PANEL_BUILD = "5.1.0";
+const PANEL_BUILD = "5.2.0";
 const QUIET_AFTER_MS = 90000;
 
 const params = new URLSearchParams(location.search);
@@ -1143,12 +1143,11 @@ async function onFinal(text) {
   liveEvent();
   live.model.final = text;
   live.model.phase = "writing";
-  clearPlanDock(live.model.plan);
-  // Collapse the tool cards, like a finished thought
+  // Keep the tool cards where they are while the answer is written; they fold away once it is done,
+  // with the scroll position compensated so nothing on screen jumps.
   live.cards.forEach((card, gid) => {
     const g = live.model.segments.find((s) => s.id === gid);
     if (g) g.ms = groupWallMs(g);
-    card.dataset.open = "false";
     card.querySelector(".g-inner .ghost-row")?.remove();
   });
   tickLive();
@@ -1160,8 +1159,31 @@ async function onFinal(text) {
   finishLiveUI(live, { outcome: "final" });
 }
 
+/**
+ * Remember where the answer sits on screen; the returned function puts it back after the layout
+ * above it changed (cards folded, plan added, status line hidden), so nothing visibly jumps.
+ */
+function keepViewAt(live) {
+  const chat = $("chat");
+  const ref = live.el.querySelector(".prose.final:not([hidden])") || live.el.querySelector(".outcome-slot") || live.el;
+  const before = ref.getBoundingClientRect().top;
+  return () => {
+    const delta = ref.getBoundingClientRect().top - before;
+    if (Math.abs(delta) > 1) chat.scrollTop += delta;
+  };
+}
+
+function foldCards(live) {
+  live.cards.forEach((card) => {
+    card.classList.add("no-anim");
+    card.dataset.open = "false";
+  });
+  requestAnimationFrame(() => requestAnimationFrame(() => live.cards.forEach((card) => card.classList.remove("no-anim"))));
+}
+
 function finishLiveUI(live, { outcome, quiet = false } = {}) {
   if (!live || live.done) return;
+  const restoreView = keepViewAt(live);
   live.done = true;
   clearInterval(live.timer);
   const m = live.model;
@@ -1179,8 +1201,8 @@ function finishLiveUI(live, { outcome, quiet = false } = {}) {
     if (!g.ms) g.ms = groupWallMs(g);
     card.querySelector(".g-inner .ghost-row")?.remove();
     renderGroupHead(card, g, { live: false });
-    card.dataset.open = "false";
   });
+  foldCards(live);
   live.el.querySelector(".status-line").hidden = true;
   live.el.querySelector(".quiet-hint").hidden = true;
   if (m.plan && m.plan.length) live.el.querySelector(".segs").prepend(planSegment(m.plan));
@@ -1190,6 +1212,7 @@ function finishLiveUI(live, { outcome, quiet = false } = {}) {
   if (state.live === live) state.live = null;
   $("jumpBtn").dataset.live = "false";
   renderStatus();
+  restoreView();
   scrollToEnd();
 }
 
@@ -2503,7 +2526,6 @@ function bindEvents() {
   const markUser = () => (userScrollAt = Date.now());
   chat.addEventListener("wheel", markUser, { passive: true });
   chat.addEventListener("touchmove", markUser, { passive: true });
-  chat.addEventListener("pointerdown", markUser, { passive: true });
   chat.addEventListener("keydown", markUser);
   chat.addEventListener(
     "scroll",

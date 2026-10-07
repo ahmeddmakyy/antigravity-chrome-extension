@@ -1,6 +1,6 @@
 {
-  "display_name": "MyChrome waker",
-  "description": "Delivers messages from the Antigravity Chrome side panel into the linked conversation.",
+  "display_name": "MyChrome helper",
+  "description": "Keeps MyChrome connected to Chrome while Antigravity is open and wakes the linked conversation when you write in the side panel.",
   "command": "{{NODE_PATH}}",
   "args": [
     "{{WAKER_PATH}}"

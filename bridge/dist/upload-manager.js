@@ -103,7 +103,7 @@ var ALLOWED_EXTENSIONS = /* @__PURE__ */ new Set([
 ]);
 function sanitizeFileName(rawName) {
   if (!rawName || typeof rawName !== "string") return "upload";
-  let clean = path2.basename(rawName.trim());
+  let clean = rawName.trim().split(/[\\/]/).pop() || "";
   clean = clean.replace(/[\x00-\x1f<>:"/\\|?*]/g, "_");
   clean = clean.replace(/[. ]+$/, "");
   if (!clean) clean = "upload";

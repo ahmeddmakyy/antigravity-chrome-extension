@@ -12,10 +12,17 @@ Everything they should read must go through `reply_to_user`.
 
 1. Call `connect_side_panel` once. If you know your conversation ID (the UUID folder name in your
    artifacts path, `.../brain/<uuid>/`), pass it as `conversation_id`. If you are not sure, leave it out.
-2. Do exactly what the tool result says:
-   - "Nothing is waiting. End your turn now": end your turn immediately and write nothing else.
-   - It contains a user message: handle it as described below.
-   - It says no automatic wake-up is installed: use the legacy loop it describes.
+   This also opens Chrome when it is closed and waits for the MyChrome extension.
+2. Then:
+   - **`/mychrome` with a task** (for example "/mychrome open my Gmail and summarize the unread emails"):
+     do the task now with the MyChrome browser tools. Open the page with `tabs_create(active=true)`, or
+     `navigate` the active tab (find it with `tabs_list`). Answer here in this Antigravity chat, not with
+     `reply_to_user`, because the user is reading this chat.
+   - **`/mychrome` alone:** if the tool result says nothing is waiting, end your turn without writing anything else.
+   - **The result contains panel messages:** handle them as described below.
+   - **The result says Chrome could not be reached:** tell the user to open Chrome with the MyChrome extension enabled.
+
+You only need `/mychrome` once. The link is remembered, and every later side-panel message wakes you by itself.
 
 ## When a side-panel message arrives
 

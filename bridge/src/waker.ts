@@ -11,6 +11,7 @@
  * Polling here is local HTTP only: it costs no model tokens.
  */
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
@@ -36,8 +37,16 @@ interface AgentApi {
   needsShell: boolean;
 }
 
+let logSink: ((message: string) => void) | null = null;
+
+/** The helper routes waker messages into bridge.log (a detached process has no console). */
+export function setWakerLogger(fn: (message: string) => void): void {
+  logSink = fn;
+}
+
 function log(message: string): void {
-  process.stdout.write(`[${new Date().toISOString()}] ${message}\n`);
+  if (logSink) logSink(`[Waker] ${message}`);
+  else process.stdout.write(`[${new Date().toISOString()}] ${message}\n`);
 }
 
 function readToken(): string {
@@ -54,14 +63,20 @@ function sleep(ms: number): Promise<void> {
 }
 
 /** Find agentapi on PATH (Antigravity adds it for sidecars). */
-function resolveAgentApi(): AgentApi | null {
+/**
+ * Find agentapi. Sidecars get Antigravity's bin folder on PATH, but the helper may also be started
+ * by an MCP process, which does not. So we also look in Antigravity's own bin folders.
+ */
+export function resolveAgentApi(): AgentApi | null {
   const override = process.env.AGENTAPI_BIN;
   if (override && fs.existsSync(override)) {
     return { bin: override, needsShell: /\.(cmd|bat)$/i.test(override) };
   }
   const isWin = process.platform === "win32";
   const exts = isWin ? ["", ".exe", ".cmd", ".bat"] : [""];
-  const dirs = (process.env.PATH || process.env.Path || "").split(path.delimiter).filter(Boolean);
+  const home = os.homedir();
+  const knownDirs = ["antigravity", "antigravity-cli", "antigravity-ide"].map((d) => path.join(home, ".gemini", d, "bin"));
+  const dirs = [...(process.env.PATH || process.env.Path || "").split(path.delimiter).filter(Boolean), ...knownDirs];
   // Prefer real executables over shell shims, so the user's text never passes through a shell.
   for (const preferShim of [false, true]) {
     for (const dir of dirs) {
@@ -131,11 +146,11 @@ async function postResult(token: string, body: unknown): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
+export async function runWaker(): Promise<void> {
   log(`MyChrome waker started. Bridge: ${BASE}`);
   let api = resolveAgentApi();
   while (!api) {
-    log("agentapi was not found on PATH. Is this running as an Antigravity sidecar? Retrying in 30s.");
+    log("agentapi was not found (PATH and ~/.gemini/antigravity*/bin). Retrying in 30s.");
     await sleep(30000);
     api = resolveAgentApi();
   }
@@ -156,7 +171,7 @@ async function main(): Promise<void> {
         signal: AbortSignal.timeout(35000),
       });
     } catch {
-      if (!bridgeWasDown) log("Bridge is not reachable yet. It starts with Antigravity's MCP servers.");
+      if (!bridgeWasDown) log("Helper is not reachable yet.");
       bridgeWasDown = true;
       await sleep(3000);
       continue;
@@ -192,7 +207,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  log(`Fatal: ${err instanceof Error ? err.stack || err.message : String(err)}`);
-  process.exit(1);
-});
+// Run on its own only when started as waker.js (the helper imports runWaker instead).
+const startedDirectly = Boolean(process.argv[1]) && path.resolve(process.argv[1]) === path.resolve(__filename);
+if (startedDirectly && path.basename(__filename).startsWith("waker.")) {
+  runWaker().catch((err) => {
+    log(`Fatal: ${err instanceof Error ? err.stack || err.message : String(err)}`);
+    process.exit(1);
+  });
+}

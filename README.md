@@ -43,6 +43,8 @@ Then show me the full result.
 
 **3. Connect.** Restart Antigravity, type `/mychrome` once in a new conversation, then click the MyChrome icon on any tab.
 
+You can also give the task straight from Antigravity: type `/mychrome` followed by what you want, for example `/mychrome summarize my unread Gmail`, and it opens Chrome and does it.
+
 To update, click **Update available** in the panel. To uninstall, ask Antigravity to run the uninstall command from [install.ps1](install.ps1) or [install.sh](install.sh), then remove the extension in `chrome://extensions`.
 
 <details>
@@ -125,6 +127,8 @@ MIT. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 1. **اطلب من Antigravity تثبيتها.** الصق رسالة التثبيت الموجودة في قسم [Install](#install) في محادثة جديدة داخل Antigravity، واضغط **Allow** عندما يطلب الإذن.
 2. **أضف الإضافة إلى Chrome.** افتح `chrome://extensions`، وفعّل **Developer mode**، واضغط **Load unpacked**، والصق مسار المجلد الذي نسخه المثبّت لك (`~/.gemini/mychrome/extension`). اترك هذا المجلد في مكانه، لأن Chrome يحمّل الإضافة منه.
 3. **اربطها.** أعد تشغيل Antigravity، واكتب `/mychrome` مرة واحدة في محادثة جديدة، ثم اضغط أيقونة MyChrome على أي تبويب.
+
+ويمكنك أيضًا إعطاء المهمة مباشرة من Antigravity: اكتب `/mychrome` ثم ما تريده، مثل `/mychrome لخّص رسائل Gmail غير المقروءة`، فيفتح Chrome وينفّذها.
 
 للتحديث، اضغط **Update available** في الشريط. ولإلغاء التثبيت، اطلب من Antigravity تشغيل أمر الإزالة الموجود في [install.ps1](install.ps1) أو [install.sh](install.sh)، ثم احذف الإضافة من `chrome://extensions`.
 

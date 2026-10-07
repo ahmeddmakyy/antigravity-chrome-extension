@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
 import http from "http";
+import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { Logger } from "./logger.js";
@@ -16,7 +17,7 @@ import {
   SavedAttachment,
 } from "./types.js";
 import { BRIDGE_VERSION } from "./version.js";
-import { EXTENSION_ORIGIN } from "./constants.js";
+import { EXTENSION_ORIGIN, EXTENSION_ID } from "./constants.js";
 import { getDataDir } from "./paths.js";
 import { saveAttachment, cleanOldUploads } from "./upload-manager.js";
 
@@ -38,6 +39,88 @@ export interface BridgeOptions {
   holdSeconds?: number;
   /** Without a Stop hook, a turn with no agent activity for this long is presumed idle (tests shorten it). */
   presumedIdleMs?: number;
+  /** Opens Chrome at a URL. Returns true if a launch was attempted. Tests inject a fake. */
+  chromeLauncher?: (url: string) => boolean;
+}
+
+/** Methods that MCP processes may call on the long-lived helper through POST /rpc. */
+const RPC_METHODS = new Set([
+  "askUser",
+  "canEndTurnSafely",
+  "connectPanel",
+  "executeBrowserCommand",
+  "formatMessagesForAgent",
+  "readPanelMessages",
+  "requestConfirmation",
+  "sendReply",
+  "takeInterrupts",
+  "updatePlan",
+  "waitForUserMessage",
+  "ensureExtension",
+  "getAgentStatus",
+]);
+
+/** JSON cannot carry Maps, so they travel as { __map: [[k, v], ...] }. */
+export function toWire(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value === undefined ? null : value, (_k, v) => (v instanceof Map ? { __map: [...v.entries()] } : v)));
+}
+
+export function fromWire(value: unknown): unknown {
+  return JSON.parse(JSON.stringify(value), (_k, v) => (v && typeof v === "object" && Array.isArray((v as { __map?: unknown }).__map) ? new Map((v as { __map: [unknown, unknown][] }).__map) : v));
+}
+
+/** Default Chrome launcher: opens the URL in the user's Chrome (starting Chrome if it is closed). */
+export function defaultChromeLauncher(url: string): boolean {
+  const tryOne = (cmd: string, args: string[], opts: Record<string, unknown> = {}): boolean => {
+    try {
+      const child = spawn(cmd, args, { detached: true, stdio: "ignore", windowsHide: false, ...opts });
+      child.on("error", () => {});
+      child.unref();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const custom = process.env.MYCHROME_CHROME_PATH;
+  if (custom && fs.existsSync(custom)) return tryOne(custom, [url]);
+  if (process.platform === "win32") {
+    const roots = [process.env["PROGRAMFILES"], process.env["PROGRAMFILES(X86)"], process.env["LOCALAPPDATA"]].filter(Boolean) as string[];
+    for (const r of roots) {
+      const exe = path.join(r, "Google", "Chrome", "Application", "chrome.exe");
+      if (fs.existsSync(exe)) return tryOne(exe, [url]);
+    }
+    return tryOne("cmd.exe", ["/d", "/s", "/c", `start "" chrome "${url}"`], { windowsVerbatimArguments: true });
+  }
+  if (process.platform === "darwin") return tryOne("open", ["-a", "Google Chrome", url]);
+  for (const bin of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]) {
+    for (const dir of (process.env.PATH || "").split(path.delimiter)) {
+      if (dir && fs.existsSync(path.join(dir, bin))) return tryOne(path.join(dir, bin), [url]);
+    }
+  }
+  return false;
+}
+
+/** The page Chrome opens when the helper needs the extension: it wakes MyChrome and is closed by it. */
+function connectPageHtml(extensionId: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>MyChrome</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#141311;color:#EDE7E0;font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+  .card{max-width:440px;padding:28px;border-radius:18px;background:#1E1C1A;border:1px solid #2E2A27;text-align:center}
+  h1{font-size:18px;margin:0 0 6px} p{margin:0;color:#B7AFA7} code{font:13px ui-monospace,monospace;color:#EDE7E0}
+  .dots{display:inline-flex;gap:4px;margin-bottom:14px}.dots i{width:7px;height:7px;border-radius:50%;animation:h 1.2s infinite}
+  .dots i:nth-child(1){background:#FFB23E}.dots i:nth-child(2){background:#B892FF;animation-delay:.15s}.dots i:nth-child(3){background:#5EEAD4;animation-delay:.3s}
+  @keyframes h{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+</style></head><body><div class="card"><div class="dots"><i></i><i></i><i></i></div>
+<h1 id="t">Connecting MyChrome</h1><p id="m">This tab closes by itself in a moment.</p></div>
+<script>
+  var ID=${JSON.stringify(extensionId)};
+  function done(){document.getElementById('t').textContent='MyChrome is connected';document.getElementById('m').textContent='You can close this tab.';}
+  function missing(){document.getElementById('t').textContent='MyChrome is not installed in this Chrome';
+    document.getElementById('m').innerHTML='Open <code>chrome://extensions</code>, turn on Developer mode, click Load unpacked and choose <code>~/.gemini/mychrome/extension</code>.';}
+  try{ if(window.chrome&&chrome.runtime&&chrome.runtime.sendMessage){ chrome.runtime.sendMessage(ID,{type:'mychrome_wake'},function(r){ if(chrome.runtime.lastError||!r){missing();} }); } else { missing(); } }catch(e){ missing(); }
+  var n=0; var t=setInterval(function(){ n++; fetch('/connected',{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){ if(j.connected){clearInterval(t);done();} }).catch(function(){}); if(n>40)clearInterval(t); },500);
+</script></body></html>`;
 }
 
 interface WakeJob {
@@ -202,6 +285,8 @@ export class BridgeWSServer {
   private hookSelfTestAt = 0;
   private extensionVersion = "";
   private presumedIdleMs = PRESUMED_IDLE_MS;
+  private chromeLauncher: (url: string) => boolean;
+  private lastChromeLaunchAt = 0;
   private pendingLanguageNote: string | null = null;
   private turnActive = false;
   private turnHadUserMessage = false;
@@ -219,6 +304,8 @@ export class BridgeWSServer {
     this.stateDir = options.stateDir ?? getDataDir();
     this.holdSeconds = options.holdSeconds ?? 1800;
     this.presumedIdleMs = options.presumedIdleMs ?? PRESUMED_IDLE_MS;
+    this.chromeLauncher =
+      options.chromeLauncher ?? (process.env.NODE_ENV === "test" || process.env.MYCHROME_NO_LAUNCH === "1" ? () => false : defaultChromeLauncher);
     this.loadSessionState();
 
     this.logger.addListener((level, message, data) => {
@@ -254,7 +341,17 @@ export class BridgeWSServer {
             res.end("mychrome");
             return;
           }
-          if (pathname.startsWith("/hook/") || pathname.startsWith("/waker/") || pathname === "/status") {
+          if (req.method === "GET" && pathname === "/connected") {
+            res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+            res.end(JSON.stringify({ connected: this.isExtensionConnected() }));
+            return;
+          }
+          if (req.method === "GET" && pathname === "/connect") {
+            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+            res.end(connectPageHtml(EXTENSION_ID));
+            return;
+          }
+          if (pathname.startsWith("/hook/") || pathname.startsWith("/waker/") || pathname === "/status" || pathname === "/rpc") {
             this.handleControlRequest(pathname, req, res).catch((err) => {
               this.logger.error(`[HTTP] ${pathname} failed: ${err instanceof Error ? err.message : String(err)}`);
               if (!res.headersSent) {
@@ -288,6 +385,9 @@ export class BridgeWSServer {
           res.end();
         });
 
+        // Long RPC calls (ask_user, waiting for the user) can take minutes.
+        this.httpServer.requestTimeout = 0;
+        this.httpServer.timeout = 0;
         this.wss = new WebSocketServer({
           server: this.httpServer,
           maxPayload: 60 * 1024 * 1024,
@@ -665,10 +765,13 @@ export class BridgeWSServer {
   }
 
   /** True when the agent can safely end its turn and still be woken up by the next panel message. */
+  /**
+   * v5.2: the agent always ends its turn. The legacy wait_for_user_message loop made the agent sit
+   * in 20-50 s polls ("waiting for a reply"), which users hated. If no wake channel is up yet, the
+   * message waits in the queue and the helper delivers it as soon as the waker connects.
+   */
   public canEndTurnSafely(): boolean {
-    const linkedOrPending = Boolean(this.linkedConversationId) || this.isLinkPending();
-    if (!linkedOrPending) return false;
-    return this.isWakerOnline() || this.hooksConfirmed() || this.setupDone;
+    return true;
   }
 
   public broadcastStatus(): void {
@@ -977,6 +1080,38 @@ export class BridgeWSServer {
   }
 
   /** connect_side_panel: link this conversation and hand over anything already waiting. */
+  public isExtensionConnected(): boolean {
+    return Boolean(this.activeSocket && this.activeSocket.readyState === WebSocket.OPEN);
+  }
+
+  /**
+   * Make sure the Chrome extension is connected. If it is not, open Chrome at the /connect page:
+   * this starts Chrome when it is closed and wakes the extension when it is asleep.
+   */
+  public async ensureExtension(timeoutMs = 20000): Promise<{ connected: boolean; launched: boolean }> {
+    if (this.isExtensionConnected()) return { connected: true, launched: false };
+    let launched = false;
+    if (Date.now() - this.lastChromeLaunchAt > 30000) {
+      const url = `http://127.0.0.1:${this.port}/connect`;
+      try {
+        launched = this.chromeLauncher(url);
+      } catch (err) {
+        this.logger.warn(`[Chrome] Could not open Chrome: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      if (launched) {
+        this.lastChromeLaunchAt = Date.now();
+        this.logger.info("[Chrome] Extension not connected: opened Chrome at the MyChrome connect page.");
+      }
+    }
+    const waitMs = launched ? timeoutMs : process.env.NODE_ENV === "test" ? 0 : Math.min(timeoutMs, 4000);
+    const start = Date.now();
+    while (Date.now() - start < waitMs) {
+      if (this.isExtensionConnected()) return { connected: true, launched };
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return { connected: this.isExtensionConnected(), launched };
+  }
+
   public connectPanel(conversationId?: string): {
     linked: boolean;
     linkPending: boolean;
@@ -1103,6 +1238,24 @@ export class BridgeWSServer {
         hookSelfTestAt: this.hookSelfTestAt || null,
         turnId: this.turnActive ? this.turnId : null,
       });
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/rpc") {
+      const body = (await this.readJsonBody(req)) as { method?: string; args?: unknown[] };
+      const method = String(body.method || "");
+      if (!RPC_METHODS.has(method)) {
+        this.sendJson(res, 400, { ok: false, error: `Unknown method: ${method}` });
+        return;
+      }
+      req.socket.setTimeout(0);
+      try {
+        const fn = (this as unknown as Record<string, (...a: unknown[]) => unknown>)[method];
+        const result = await fn.apply(this, Array.isArray(body.args) ? body.args : []);
+        this.sendJson(res, 200, { ok: true, result: toWire(result) });
+      } catch (err) {
+        this.sendJson(res, 200, { ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
       return;
     }
 
@@ -1592,8 +1745,14 @@ export class BridgeWSServer {
       );
     }
 
-    if (!this.activeSocket || this.activeSocket.readyState !== WebSocket.OPEN) {
-      throw new Error("Chrome extension is not connected. Make sure Chrome is open with the extension enabled.");
+    if (!this.isExtensionConnected()) {
+      const r = await this.ensureExtension(15000);
+      if (!r.connected) {
+        throw new Error(
+          "Chrome extension is not connected. MyChrome tried to open Chrome but the extension did not connect. " +
+            "Ask the user to open Chrome and check that the MyChrome extension is enabled in chrome://extensions."
+        );
+      }
     }
 
     this.markAgentActive();

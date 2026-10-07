@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MyChrome",
-  "version": "5.1.0",
+  "version": "5.2.0",
   "description": "Unofficial Antigravity Chrome extension. Chat with your Google Antigravity agent from a side panel in your signed-in tabs.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA03pYhhNVmKoV/P8/BNrMCafTLjRmR0cbUo/CrsFhxCdSCzAAMXVeNITBFMo5g0b21ztkZUDzQ6nryVFZ6dxSiWahohKr/iaWcnXKNHxhY9/+vd9vJjCQpdRjgq2pe1V4sJXdhMqgbJL0jKVfapLcFbJPZkwlEtKEe0reDi/RWv4NWnMYrUhzdaOlx6shnDIpqPZX4BFidTgbnX024sCSmGDrw39neni61HBDj/ckx2N7iTgzabZjslxSn9nycO+Sslx+Hyv7u5NT9SfuzxLZFMOD9gmnYTsSEBEXcCbu2XfpsmkkxJUuStCkCr97fcqYnolJ7ALNa6AUnCfI9J6neQIDAQAB",
   "permissions": [
@@ -46,5 +46,11 @@
         "<all_urls>"
       ]
     }
-  ]
+  ],
+  "externally_connectable": {
+    "matches": [
+      "http://127.0.0.1/*",
+      "http://localhost/*"
+    ]
+  }
 }

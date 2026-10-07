@@ -19,8 +19,8 @@ function handleSuccess(res: unknown) {
 }
 
 /** Attach side-panel messages that arrived while the agent was working. */
-function withInterrupts<T extends { content: ToolContent[]; isError?: boolean }>(result: T, wsServer: BridgeWSServer): T {
-  const note = wsServer.takeInterrupts();
+async function withInterrupts<T extends { content: ToolContent[]; isError?: boolean }>(result: T, wsServer: BridgeWSServer): Promise<T> {
+  const note = await wsServer.takeInterrupts();
   if (note) {
     result.content.push({ type: "text", text: note });
   }
@@ -106,7 +106,7 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
 
   server.tool(
     "connect_side_panel",
-    "Call once when the user runs /mychrome. Links this Antigravity conversation to the Chrome side panel so every new panel message wakes you automatically (no polling). Returns any messages that are already waiting.",
+    "Call once when the user runs /mychrome. Opens Chrome if needed and waits for the MyChrome extension, links this Antigravity conversation to the Chrome side panel so every new panel message wakes you automatically (no polling), and returns any messages that are already waiting. If the user's /mychrome message also contains a task, do that task right after this call.",
     {
       conversation_id: z
         .string()
@@ -119,18 +119,28 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
         logger.debug(`[MCP Tool] connect_side_panel _meta keys: ${Object.keys((extra as { _meta: object })._meta).join(", ")}`);
       }
       const id = metaId || conversation_id;
-      const r = wsServer.connectPanel(id);
+      const ext = (await wsServer.ensureExtension(20000)) as { connected: boolean; launched: boolean };
+      const r = await wsServer.connectPanel(id);
       logger.info(
         `[MCP Tool] connect_side_panel (id ${id ? "given" : "not given"}, linked=${r.linked}, pending=${r.linkPending}, mode=${r.mode}, queued=${r.queued.length})`
       );
 
       const content: ToolContent[] = [];
+      const chromeNote = ext.connected
+        ? ext.launched
+          ? "Chrome was opened and MyChrome is connected. "
+          : "MyChrome is connected to Chrome. "
+        : "MyChrome could not reach Chrome: browser tools will fail until the user opens Chrome with the MyChrome extension enabled. Tell the user. ";
+      const taskNote =
+        "If the user's /mychrome message in THIS chat also asks for a task, do it now with the browser tools " +
+        "(open the page with tabs_create(active=true) or navigate the active tab), then answer here in this chat, not with reply_to_user. ";
       if (r.queued.length > 0) {
         content.push({
           type: "text",
           text:
-            "Connected to the Chrome side panel. The user already wrote something, handle it now:\n\n" +
-            wsServer.formatMessagesForAgent(r.queued),
+            chromeNote +
+            "Connected to the Chrome side panel. The user already wrote something in the panel, handle it now:\n\n" +
+            (await wsServer.formatMessagesForAgent(r.queued)),
         });
         let imgCount = 0;
         for (const m of r.queued) {
@@ -151,15 +161,18 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
         content.push({
           type: "text",
           text:
-            "Connected to the Chrome side panel. Nothing is waiting. End your turn now without writing anything else. " +
-            "Each new side-panel message will start a new turn for you automatically.",
+            chromeNote +
+            "Linked to the Chrome side panel. Each new side-panel message will start a new turn for you automatically. " +
+            taskNote +
+            "If there is no task, end your turn now without writing anything else.",
         });
       } else {
         content.push({
           type: "text",
           text:
-            "Connected, but no automatic wake-up is installed on this computer yet (the user can run `npm run setup` in the bridge folder). " +
-            "Until then, use the legacy loop: call wait_for_user_message(timeout_seconds=50) and keep calling it after each final reply.",
+            chromeNote +
+            taskNote +
+            "If there is no task, end your turn now. New side-panel messages wait until the MyChrome helper can wake you.",
         });
       }
       return { content };
@@ -173,14 +186,14 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
       message_id: z.number().optional().describe("Optional message number (#n) to read, for example to see its screenshot or attachments."),
     },
     async ({ message_id }) => {
-      const { messages, screenshots, imageAttachments } = wsServer.readPanelMessages(message_id);
+      const { messages, screenshots, imageAttachments } = await wsServer.readPanelMessages(message_id);
       logger.info(
         `[MCP Tool] read_panel_messages returned ${messages.length} message(s), ${screenshots.size} screenshot(s), ${imageAttachments.length} image attachment(s)`
       );
       if (messages.length === 0) {
         return { content: [{ type: "text" as const, text: "No side-panel messages are waiting." }] };
       }
-      const content: ToolContent[] = [{ type: "text", text: wsServer.formatMessagesForAgent(messages) }];
+      const content: ToolContent[] = [{ type: "text", text: await wsServer.formatMessagesForAgent(messages) }];
       let imgCount = 0;
       for (const [, shot] of screenshots) {
         if (imgCount < 5) {
@@ -273,25 +286,23 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
       const startTime = Date.now();
       logger.info(`[MCP Tool] reply_to_user called (kind: ${kind}, length: ${text.length})`);
       try {
-        wsServer.sendReply(text, kind);
+        await wsServer.sendReply(text, kind);
         const duration = Date.now() - startTime;
         logger.info(`[MCP Tool] reply_to_user delivered in ${duration}ms`);
         if (kind === "progress") {
           return withInterrupts(handleSuccess("Progress shown in the side panel. Keep working."), wsServer);
         }
-        const interrupts = wsServer.takeInterrupts(false);
+        const interrupts = await wsServer.takeInterrupts(false);
         if (interrupts) {
           return handleSuccess(`Final reply shown in the side panel. Do not end your turn yet.\n\n${interrupts}`);
         }
-        if (wsServer.canEndTurnSafely()) {
+        if (await wsServer.canEndTurnSafely()) {
           return handleSuccess(
             "Final reply shown in the side panel. The task is complete: end your turn now. " +
               "Do not call wait_for_user_message; the next side-panel message will start a new turn for you automatically."
           );
         }
-        return handleSuccess(
-          "Final reply shown in the side panel. No automatic wake-up is installed, so call wait_for_user_message(timeout_seconds=50) to keep listening."
-        );
+        return handleSuccess("Final reply shown in the side panel. The task is complete: end your turn now.");
       } catch (err) {
         const duration = Date.now() - startTime;
         logger.error(`[MCP Tool] reply_to_user failed after ${duration}ms: ${err instanceof Error ? err.message : String(err)}`);
@@ -318,7 +329,7 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
         .describe("The full checklist, in order"),
     },
     async ({ steps }) => {
-      wsServer.updatePlan(steps);
+      await wsServer.updatePlan(steps);
       const done = steps.filter((s) => s.status === "done").length;
       logger.info(`[MCP Tool] update_plan (${done}/${steps.length} done)`);
       return withInterrupts(handleSuccess("Plan shown in the side panel. Keep working and update it as steps finish."), wsServer);

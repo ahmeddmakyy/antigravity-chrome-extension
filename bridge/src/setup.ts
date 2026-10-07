@@ -78,7 +78,7 @@ function setSessionFlag(setupDone: boolean): void {
 }
 
 function install(): void {
-  const waker = path.join(BRIDGE_ROOT, "dist", "waker.js");
+  const waker = path.join(BRIDGE_ROOT, "dist", "daemon.js");
   const hook = path.join(BRIDGE_ROOT, "dist", "stop-hook.js");
   for (const f of [waker, hook]) {
     if (!fs.existsSync(f)) {

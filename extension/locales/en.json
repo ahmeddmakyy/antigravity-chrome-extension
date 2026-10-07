@@ -181,7 +181,7 @@
   "tipPlanText": "Make a short plan first, then start.",
   "queuedBusy": "Antigravity will read this with its next step.",
   "shotAttached": "Screenshot attached",
-  "versionPanelMismatch": "Chrome is still running an older part of this extension (background {b}, panel {p}). Open chrome://extensions, click Reload on Antigravity, then close and reopen this panel.",
+  "versionPanelMismatch": "Chrome is still running an older part of this extension (background {b}, panel {p}). Open chrome://extensions, click Reload on MyChrome, then close and reopen this panel.",
   "versionBridgeOld": "The bridge on your computer is older ({v}). Quit Antigravity completely and open it again.",
   "versionsLine": "Panel {p} · Background {b} · Bridge {r}",
   "lbCaption": "Screenshot",

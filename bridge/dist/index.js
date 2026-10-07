@@ -2275,7 +2275,7 @@ var require_websocket = __commonJS({
     "use strict";
     var EventEmitter = __require("events");
     var https = __require("https");
-    var http2 = __require("http");
+    var http3 = __require("http");
     var net = __require("net");
     var tls = __require("tls");
     var { randomBytes, createHash } = __require("crypto");
@@ -2830,7 +2830,7 @@ var require_websocket = __commonJS({
       }
       const defaultPort = isSecure ? 443 : 80;
       const key = randomBytes(16).toString("base64");
-      const request = isSecure ? https.request : http2.request;
+      const request = isSecure ? https.request : http3.request;
       const protocolSet = /* @__PURE__ */ new Set();
       let perMessageDeflate;
       opts.createConnection = opts.createConnection || (isSecure ? tlsConnect : netConnect);
@@ -3326,7 +3326,7 @@ var require_websocket_server = __commonJS({
   "node_modules/ws/lib/websocket-server.js"(exports, module) {
     "use strict";
     var EventEmitter = __require("events");
-    var http2 = __require("http");
+    var http3 = __require("http");
     var { Duplex } = __require("stream");
     var { createHash } = __require("crypto");
     var extension2 = require_extension();
@@ -3407,8 +3407,8 @@ var require_websocket_server = __commonJS({
           );
         }
         if (options.port != null) {
-          this._server = http2.createServer((req, res) => {
-            const body = http2.STATUS_CODES[426];
+          this._server = http3.createServer((req, res) => {
+            const body = http3.STATUS_CODES[426];
             res.writeHead(426, {
               "Content-Length": body.length,
               "Content-Type": "text/plain"
@@ -3697,7 +3697,7 @@ var require_websocket_server = __commonJS({
       this.destroy();
     }
     function abortHandshake(socket, code, message, headers) {
-      message = message || http2.STATUS_CODES[code];
+      message = message || http3.STATUS_CODES[code];
       headers = {
         Connection: "close",
         "Content-Type": "text/html",
@@ -3706,7 +3706,7 @@ var require_websocket_server = __commonJS({
       };
       socket.once("finish", socket.destroy);
       socket.end(
-        `HTTP/1.1 ${code} ${http2.STATUS_CODES[code]}\r
+        `HTTP/1.1 ${code} ${http3.STATUS_CODES[code]}\r
 ` + Object.keys(headers).map((h) => `${h}: ${headers[h]}`).join("\r\n") + "\r\n\r\n" + message
       );
     }
@@ -6951,8 +6951,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path7) {
-      let input2 = path7;
+    function removeDotSegments(path8) {
+      let input2 = path8;
       const output2 = [];
       let nextSlash = -1;
       let len = 0;
@@ -7361,8 +7361,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path7 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path7 && path7 !== "/" ? path7 : void 0;
+        const path8 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path8 && path8 !== "/" ? path8 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7421,7 +7421,7 @@ var require_schemes = __commonJS({
       urnComponent.nss = (uuidComponent.uuid || "").toLowerCase();
       return urnComponent;
     }
-    var http2 = (
+    var http3 = (
       /** @type {SchemeHandler} */
       {
         scheme: "http",
@@ -7434,7 +7434,7 @@ var require_schemes = __commonJS({
       /** @type {SchemeHandler} */
       {
         scheme: "https",
-        domainHost: http2.domainHost,
+        domainHost: http3.domainHost,
         parse: httpParse,
         serialize: httpSerialize
       }
@@ -7478,7 +7478,7 @@ var require_schemes = __commonJS({
     var SCHEMES = (
       /** @type {Record<SchemeName, SchemeHandler>} */
       {
-        http: http2,
+        http: http3,
         https,
         ws,
         wss,
@@ -10875,12 +10875,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs6, exportName) {
+    function addFormats(ajv, list, fs7, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs6[f]);
+        ajv.addFormat(f, fs7[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -10889,7 +10889,7 @@ var require_dist = __commonJS({
 });
 
 // src/index.ts
-import path6 from "path";
+import path7 from "path";
 import { fileURLToPath } from "url";
 
 // node_modules/@modelcontextprotocol/sdk/dist/esm/server/stdio.js
@@ -11711,10 +11711,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path7) {
-  if (!path7)
+function getElementAtPath(obj, path8) {
+  if (!path8)
     return obj;
-  return path7.reduce((acc, key) => acc?.[key], obj);
+  return path8.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -12054,11 +12054,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path7, issues) {
+function prefixIssues(path8, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path7);
+    iss.path.unshift(path8);
     return iss;
   });
 }
@@ -12508,16 +12508,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path7 = []) => {
+  const processError = (error63, path8 = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path7, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path8, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
       } else {
-        const fullpath = [...path7, ...issue2.path];
+        const fullpath = [...path8, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -12556,17 +12556,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path7 = []) => {
+  const processError = (error63, path8 = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path7, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path8, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path7, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path8, ...issue2.path]);
       } else {
-        const fullpath = [...path7, ...issue2.path];
+        const fullpath = [...path8, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -12605,8 +12605,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path7 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path7) {
+  const path8 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path8) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -29708,13 +29708,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path7 = ref.slice(1).split("/").filter(Boolean);
-  if (path7.length === 0) {
+  const path8 = ref.slice(1).split("/").filter(Boolean);
+  if (path8.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path7[0] === defsKey) {
-    const key = path7[1] === void 0 ? void 0 : decodeJSONPointerSegment(path7[1]);
+  if (path8[0] === defsKey) {
+    const key = path8[1] === void 0 ? void 0 : decodeJSONPointerSegment(path8[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -32369,11 +32369,12 @@ var import_websocket_server = __toESM(require_websocket_server(), 1);
 
 // src/ws-server.ts
 import http from "http";
+import { spawn } from "child_process";
 import fs5 from "fs";
 import path5 from "path";
 
 // src/version.ts
-var BRIDGE_VERSION = "5.1.0";
+var BRIDGE_VERSION = "5.2.0";
 
 // src/constants.ts
 var EXTENSION_ID = "aeofpcedejopeeebdjfkapcabkkflhej";
@@ -32409,7 +32410,7 @@ var WINDOWS_RESERVED = /* @__PURE__ */ new Set([
 var MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 function sanitizeFileName(rawName) {
   if (!rawName || typeof rawName !== "string") return "upload";
-  let clean = path4.basename(rawName.trim());
+  let clean = rawName.trim().split(/[\\/]/).pop() || "";
   clean = clean.replace(/[\x00-\x1f<>:"/\\|?*]/g, "_");
   clean = clean.replace(/[. ]+$/, "");
   if (!clean) clean = "upload";
@@ -32509,6 +32510,78 @@ function getAllowedOrigins() {
   }
   return allowed;
 }
+var RPC_METHODS = /* @__PURE__ */ new Set([
+  "askUser",
+  "canEndTurnSafely",
+  "connectPanel",
+  "executeBrowserCommand",
+  "formatMessagesForAgent",
+  "readPanelMessages",
+  "requestConfirmation",
+  "sendReply",
+  "takeInterrupts",
+  "updatePlan",
+  "waitForUserMessage",
+  "ensureExtension",
+  "getAgentStatus"
+]);
+function toWire(value) {
+  return JSON.parse(JSON.stringify(value === void 0 ? null : value, (_k, v) => v instanceof Map ? { __map: [...v.entries()] } : v));
+}
+function fromWire(value) {
+  return JSON.parse(JSON.stringify(value), (_k, v) => v && typeof v === "object" && Array.isArray(v.__map) ? new Map(v.__map) : v);
+}
+function defaultChromeLauncher(url2) {
+  const tryOne = (cmd, args, opts = {}) => {
+    try {
+      const child = spawn(cmd, args, { detached: true, stdio: "ignore", windowsHide: false, ...opts });
+      child.on("error", () => {
+      });
+      child.unref();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const custom2 = process.env.MYCHROME_CHROME_PATH;
+  if (custom2 && fs5.existsSync(custom2)) return tryOne(custom2, [url2]);
+  if (process.platform === "win32") {
+    const roots = [process.env["PROGRAMFILES"], process.env["PROGRAMFILES(X86)"], process.env["LOCALAPPDATA"]].filter(Boolean);
+    for (const r of roots) {
+      const exe = path5.join(r, "Google", "Chrome", "Application", "chrome.exe");
+      if (fs5.existsSync(exe)) return tryOne(exe, [url2]);
+    }
+    return tryOne("cmd.exe", ["/d", "/s", "/c", `start "" chrome "${url2}"`], { windowsVerbatimArguments: true });
+  }
+  if (process.platform === "darwin") return tryOne("open", ["-a", "Google Chrome", url2]);
+  for (const bin of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]) {
+    for (const dir of (process.env.PATH || "").split(path5.delimiter)) {
+      if (dir && fs5.existsSync(path5.join(dir, bin))) return tryOne(path5.join(dir, bin), [url2]);
+    }
+  }
+  return false;
+}
+function connectPageHtml(extensionId) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>MyChrome</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#141311;color:#EDE7E0;font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+  .card{max-width:440px;padding:28px;border-radius:18px;background:#1E1C1A;border:1px solid #2E2A27;text-align:center}
+  h1{font-size:18px;margin:0 0 6px} p{margin:0;color:#B7AFA7} code{font:13px ui-monospace,monospace;color:#EDE7E0}
+  .dots{display:inline-flex;gap:4px;margin-bottom:14px}.dots i{width:7px;height:7px;border-radius:50%;animation:h 1.2s infinite}
+  .dots i:nth-child(1){background:#FFB23E}.dots i:nth-child(2){background:#B892FF;animation-delay:.15s}.dots i:nth-child(3){background:#5EEAD4;animation-delay:.3s}
+  @keyframes h{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+</style></head><body><div class="card"><div class="dots"><i></i><i></i><i></i></div>
+<h1 id="t">Connecting MyChrome</h1><p id="m">This tab closes by itself in a moment.</p></div>
+<script>
+  var ID=${JSON.stringify(extensionId)};
+  function done(){document.getElementById('t').textContent='MyChrome is connected';document.getElementById('m').textContent='You can close this tab.';}
+  function missing(){document.getElementById('t').textContent='MyChrome is not installed in this Chrome';
+    document.getElementById('m').innerHTML='Open <code>chrome://extensions</code>, turn on Developer mode, click Load unpacked and choose <code>~/.gemini/mychrome/extension</code>.';}
+  try{ if(window.chrome&&chrome.runtime&&chrome.runtime.sendMessage){ chrome.runtime.sendMessage(ID,{type:'mychrome_wake'},function(r){ if(chrome.runtime.lastError||!r){missing();} }); } else { missing(); } }catch(e){ missing(); }
+  var n=0; var t=setInterval(function(){ n++; fetch('/connected',{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){ if(j.connected){clearInterval(t);done();} }).catch(function(){}); if(n>40)clearInterval(t); },500);
+</script></body></html>`;
+}
 var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var WAKER_ONLINE_MS = 45e3;
 var WAKER_POLL_MS = 25e3;
@@ -32604,6 +32677,8 @@ var BridgeWSServer = class {
   hookSelfTestAt = 0;
   extensionVersion = "";
   presumedIdleMs = PRESUMED_IDLE_MS;
+  chromeLauncher;
+  lastChromeLaunchAt = 0;
   pendingLanguageNote = null;
   turnActive = false;
   turnHadUserMessage = false;
@@ -32620,6 +32695,7 @@ var BridgeWSServer = class {
     this.stateDir = options.stateDir ?? getDataDir();
     this.holdSeconds = options.holdSeconds ?? 1800;
     this.presumedIdleMs = options.presumedIdleMs ?? PRESUMED_IDLE_MS;
+    this.chromeLauncher = options.chromeLauncher ?? (process.env.NODE_ENV === "test" || process.env.MYCHROME_NO_LAUNCH === "1" ? () => false : defaultChromeLauncher);
     this.loadSessionState();
     this.logger.addListener((level, message, data) => {
       this.broadcast({
@@ -32652,7 +32728,17 @@ var BridgeWSServer = class {
             res.end("mychrome");
             return;
           }
-          if (pathname.startsWith("/hook/") || pathname.startsWith("/waker/") || pathname === "/status") {
+          if (req.method === "GET" && pathname === "/connected") {
+            res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+            res.end(JSON.stringify({ connected: this.isExtensionConnected() }));
+            return;
+          }
+          if (req.method === "GET" && pathname === "/connect") {
+            res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+            res.end(connectPageHtml(EXTENSION_ID));
+            return;
+          }
+          if (pathname.startsWith("/hook/") || pathname.startsWith("/waker/") || pathname === "/status" || pathname === "/rpc") {
             this.handleControlRequest(pathname, req, res).catch((err) => {
               this.logger.error(`[HTTP] ${pathname} failed: ${err instanceof Error ? err.message : String(err)}`);
               if (!res.headersSent) {
@@ -32685,6 +32771,8 @@ var BridgeWSServer = class {
           res.writeHead(404);
           res.end();
         });
+        this.httpServer.requestTimeout = 0;
+        this.httpServer.timeout = 0;
         this.wss = new import_websocket_server.default({
           server: this.httpServer,
           maxPayload: 60 * 1024 * 1024,
@@ -33031,10 +33119,13 @@ var BridgeWSServer = class {
     };
   }
   /** True when the agent can safely end its turn and still be woken up by the next panel message. */
+  /**
+   * v5.2: the agent always ends its turn. The legacy wait_for_user_message loop made the agent sit
+   * in 20-50 s polls ("waiting for a reply"), which users hated. If no wake channel is up yet, the
+   * message waits in the queue and the helper delivers it as soon as the waker connects.
+   */
   canEndTurnSafely() {
-    const linkedOrPending = Boolean(this.linkedConversationId) || this.isLinkPending();
-    if (!linkedOrPending) return false;
-    return this.isWakerOnline() || this.hooksConfirmed() || this.setupDone;
+    return true;
   }
   broadcastStatus() {
     const status = this.getAgentStatus();
@@ -33303,6 +33394,36 @@ var BridgeWSServer = class {
     return { messages, screenshots, imageAttachments };
   }
   /** connect_side_panel: link this conversation and hand over anything already waiting. */
+  isExtensionConnected() {
+    return Boolean(this.activeSocket && this.activeSocket.readyState === import_websocket.default.OPEN);
+  }
+  /**
+   * Make sure the Chrome extension is connected. If it is not, open Chrome at the /connect page:
+   * this starts Chrome when it is closed and wakes the extension when it is asleep.
+   */
+  async ensureExtension(timeoutMs = 2e4) {
+    if (this.isExtensionConnected()) return { connected: true, launched: false };
+    let launched = false;
+    if (Date.now() - this.lastChromeLaunchAt > 3e4) {
+      const url2 = `http://127.0.0.1:${this.port}/connect`;
+      try {
+        launched = this.chromeLauncher(url2);
+      } catch (err) {
+        this.logger.warn(`[Chrome] Could not open Chrome: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      if (launched) {
+        this.lastChromeLaunchAt = Date.now();
+        this.logger.info("[Chrome] Extension not connected: opened Chrome at the MyChrome connect page.");
+      }
+    }
+    const waitMs = launched ? timeoutMs : process.env.NODE_ENV === "test" ? 0 : Math.min(timeoutMs, 4e3);
+    const start = Date.now();
+    while (Date.now() - start < waitMs) {
+      if (this.isExtensionConnected()) return { connected: true, launched };
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return { connected: this.isExtensionConnected(), launched };
+  }
   connectPanel(conversationId) {
     this.linkPendingSince = Date.now();
     if (conversationId && UUID_RE.test(conversationId)) {
@@ -33408,6 +33529,23 @@ var BridgeWSServer = class {
         hookSelfTestAt: this.hookSelfTestAt || null,
         turnId: this.turnActive ? this.turnId : null
       });
+      return;
+    }
+    if (req.method === "POST" && pathname === "/rpc") {
+      const body = await this.readJsonBody(req);
+      const method = String(body.method || "");
+      if (!RPC_METHODS.has(method)) {
+        this.sendJson(res, 400, { ok: false, error: `Unknown method: ${method}` });
+        return;
+      }
+      req.socket.setTimeout(0);
+      try {
+        const fn = this[method];
+        const result = await fn.apply(this, Array.isArray(body.args) ? body.args : []);
+        this.sendJson(res, 200, { ok: true, result: toWire(result) });
+      } catch (err) {
+        this.sendJson(res, 200, { ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
       return;
     }
     if (req.method === "POST" && pathname === "/hook/stop") {
@@ -33827,8 +33965,13 @@ var BridgeWSServer = class {
         "stopped_by_user: the user pressed Stop in the side panel. Do not call more browser tools. Send one short reply_to_user(kind='final') and end your turn."
       );
     }
-    if (!this.activeSocket || this.activeSocket.readyState !== import_websocket.default.OPEN) {
-      throw new Error("Chrome extension is not connected. Make sure Chrome is open with the extension enabled.");
+    if (!this.isExtensionConnected()) {
+      const r = await this.ensureExtension(15e3);
+      if (!r.connected) {
+        throw new Error(
+          "Chrome extension is not connected. MyChrome tried to open Chrome but the extension did not connect. Ask the user to open Chrome and check that the MyChrome extension is enabled in chrome://extensions."
+        );
+      }
     }
     this.markAgentActive();
     this.resetTaskWatchdog();
@@ -34348,8 +34491,8 @@ function getErrorMap2() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path7, errorMaps, issueData } = params;
-  const fullPath = [...path7, ...issueData.path || []];
+  const { data, path: path8, errorMaps, issueData } = params;
+  const fullPath = [...path8, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -34464,11 +34607,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path7, key) {
+  constructor(parent, value, path8, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path7;
+    this._path = path8;
     this._key = key;
   }
   get path() {
@@ -38019,11 +38162,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path7) {
-  if (path7.length === 0) {
+function getDotPath(path8) {
+  if (path8.length === 0) {
     return "object root";
   }
-  return path7.reduce((acc, seg, index) => {
+  return path8.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -42020,8 +42163,8 @@ function handleSuccess(res) {
     content: [{ type: "text", text: formatResultText(res) }]
   };
 }
-function withInterrupts(result, wsServer) {
-  const note = wsServer.takeInterrupts();
+async function withInterrupts(result, wsServer) {
+  const note = await wsServer.takeInterrupts();
   if (note) {
     result.content.push({ type: "text", text: note });
   }
@@ -42081,7 +42224,7 @@ function createMcpServer(wsServer, logger) {
   );
   server.tool(
     "connect_side_panel",
-    "Call once when the user runs /mychrome. Links this Antigravity conversation to the Chrome side panel so every new panel message wakes you automatically (no polling). Returns any messages that are already waiting.",
+    "Call once when the user runs /mychrome. Opens Chrome if needed and waits for the MyChrome extension, links this Antigravity conversation to the Chrome side panel so every new panel message wakes you automatically (no polling), and returns any messages that are already waiting. If the user's /mychrome message also contains a task, do that task right after this call.",
     {
       conversation_id: external_exports.string().optional().describe("Optional. Your Antigravity conversation ID if you know it (the UUID folder name in your artifacts path, .../brain/<uuid>/).")
     },
@@ -42091,15 +42234,18 @@ function createMcpServer(wsServer, logger) {
         logger.debug(`[MCP Tool] connect_side_panel _meta keys: ${Object.keys(extra._meta).join(", ")}`);
       }
       const id = metaId || conversation_id;
-      const r = wsServer.connectPanel(id);
+      const ext = await wsServer.ensureExtension(2e4);
+      const r = await wsServer.connectPanel(id);
       logger.info(
         `[MCP Tool] connect_side_panel (id ${id ? "given" : "not given"}, linked=${r.linked}, pending=${r.linkPending}, mode=${r.mode}, queued=${r.queued.length})`
       );
       const content = [];
+      const chromeNote = ext.connected ? ext.launched ? "Chrome was opened and MyChrome is connected. " : "MyChrome is connected to Chrome. " : "MyChrome could not reach Chrome: browser tools will fail until the user opens Chrome with the MyChrome extension enabled. Tell the user. ";
+      const taskNote = "If the user's /mychrome message in THIS chat also asks for a task, do it now with the browser tools (open the page with tabs_create(active=true) or navigate the active tab), then answer here in this chat, not with reply_to_user. ";
       if (r.queued.length > 0) {
         content.push({
           type: "text",
-          text: "Connected to the Chrome side panel. The user already wrote something, handle it now:\n\n" + wsServer.formatMessagesForAgent(r.queued)
+          text: chromeNote + "Connected to the Chrome side panel. The user already wrote something in the panel, handle it now:\n\n" + await wsServer.formatMessagesForAgent(r.queued)
         });
         let imgCount = 0;
         for (const m of r.queued) {
@@ -42119,12 +42265,12 @@ function createMcpServer(wsServer, logger) {
       } else if (r.canEndTurn) {
         content.push({
           type: "text",
-          text: "Connected to the Chrome side panel. Nothing is waiting. End your turn now without writing anything else. Each new side-panel message will start a new turn for you automatically."
+          text: chromeNote + "Linked to the Chrome side panel. Each new side-panel message will start a new turn for you automatically. " + taskNote + "If there is no task, end your turn now without writing anything else."
         });
       } else {
         content.push({
           type: "text",
-          text: "Connected, but no automatic wake-up is installed on this computer yet (the user can run `npm run setup` in the bridge folder). Until then, use the legacy loop: call wait_for_user_message(timeout_seconds=50) and keep calling it after each final reply."
+          text: chromeNote + taskNote + "If there is no task, end your turn now. New side-panel messages wait until the MyChrome helper can wake you."
         });
       }
       return { content };
@@ -42137,14 +42283,14 @@ function createMcpServer(wsServer, logger) {
       message_id: external_exports.number().optional().describe("Optional message number (#n) to read, for example to see its screenshot or attachments.")
     },
     async ({ message_id }) => {
-      const { messages, screenshots, imageAttachments } = wsServer.readPanelMessages(message_id);
+      const { messages, screenshots, imageAttachments } = await wsServer.readPanelMessages(message_id);
       logger.info(
         `[MCP Tool] read_panel_messages returned ${messages.length} message(s), ${screenshots.size} screenshot(s), ${imageAttachments.length} image attachment(s)`
       );
       if (messages.length === 0) {
         return { content: [{ type: "text", text: "No side-panel messages are waiting." }] };
       }
-      const content = [{ type: "text", text: wsServer.formatMessagesForAgent(messages) }];
+      const content = [{ type: "text", text: await wsServer.formatMessagesForAgent(messages) }];
       let imgCount = 0;
       for (const [, shot] of screenshots) {
         if (imgCount < 5) {
@@ -42231,26 +42377,24 @@ function createMcpServer(wsServer, logger) {
       const startTime = Date.now();
       logger.info(`[MCP Tool] reply_to_user called (kind: ${kind}, length: ${text.length})`);
       try {
-        wsServer.sendReply(text, kind);
+        await wsServer.sendReply(text, kind);
         const duration3 = Date.now() - startTime;
         logger.info(`[MCP Tool] reply_to_user delivered in ${duration3}ms`);
         if (kind === "progress") {
           return withInterrupts(handleSuccess("Progress shown in the side panel. Keep working."), wsServer);
         }
-        const interrupts = wsServer.takeInterrupts(false);
+        const interrupts = await wsServer.takeInterrupts(false);
         if (interrupts) {
           return handleSuccess(`Final reply shown in the side panel. Do not end your turn yet.
 
 ${interrupts}`);
         }
-        if (wsServer.canEndTurnSafely()) {
+        if (await wsServer.canEndTurnSafely()) {
           return handleSuccess(
             "Final reply shown in the side panel. The task is complete: end your turn now. Do not call wait_for_user_message; the next side-panel message will start a new turn for you automatically."
           );
         }
-        return handleSuccess(
-          "Final reply shown in the side panel. No automatic wake-up is installed, so call wait_for_user_message(timeout_seconds=50) to keep listening."
-        );
+        return handleSuccess("Final reply shown in the side panel. The task is complete: end your turn now.");
       } catch (err) {
         const duration3 = Date.now() - startTime;
         logger.error(`[MCP Tool] reply_to_user failed after ${duration3}ms: ${err instanceof Error ? err.message : String(err)}`);
@@ -42270,7 +42414,7 @@ ${interrupts}`);
       ).min(1).max(12).describe("The full checklist, in order")
     },
     async ({ steps }) => {
-      wsServer.updatePlan(steps);
+      await wsServer.updatePlan(steps);
       const done = steps.filter((s) => s.status === "done").length;
       logger.info(`[MCP Tool] update_plan (${done}/${steps.length} done)`);
       return withInterrupts(handleSuccess("Plan shown in the side panel. Keep working and update it as steps finish."), wsServer);
@@ -42598,60 +42742,176 @@ ${interrupts}`);
   return server;
 }
 
+// src/remote-bridge.ts
+import http2 from "http";
+import fs6 from "fs";
+import path6 from "path";
+import { spawn as spawn2 } from "child_process";
+function readToken(fallbackDir) {
+  try {
+    return fs6.readFileSync(getTokenPath(fallbackDir), "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
+function pingHelper(port, timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const req = http2.get({ host: "127.0.0.1", port, path: "/ping", timeout: timeoutMs }, (res) => {
+      let body = "";
+      res.on("data", (d) => body += d);
+      res.on("end", () => resolve(res.statusCode === 200 && body.trim() === "mychrome"));
+    });
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+    req.on("error", () => resolve(false));
+  });
+}
+async function ensureHelper(port, distDir, logger) {
+  if (await pingHelper(port)) return true;
+  const daemon = path6.join(distDir, "daemon.js");
+  if (!fs6.existsSync(daemon)) {
+    logger.error(`[MCP] Helper not running and ${daemon} is missing.`);
+    return false;
+  }
+  logger.info("[MCP] Helper not running. Starting it in the background.");
+  try {
+    const child = spawn2(process.execPath, [daemon], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      env: { ...process.env, MYCHROME_STARTED_BY: "mcp" }
+    });
+    child.unref();
+  } catch (err) {
+    logger.error(`[MCP] Could not start the helper: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 200));
+    if (await pingHelper(port)) return true;
+  }
+  return false;
+}
+var RemoteBridge = class {
+  constructor(port, tokenDir) {
+    this.port = port;
+    this.tokenDir = tokenDir;
+  }
+  port;
+  tokenDir;
+  call(method, args) {
+    const body = JSON.stringify({ method, args });
+    const token = readToken(this.tokenDir);
+    return new Promise((resolve, reject) => {
+      const req = http2.request(
+        {
+          host: "127.0.0.1",
+          port: this.port,
+          path: "/rpc",
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body), "x-bridge-token": token }
+        },
+        (res) => {
+          const chunks = [];
+          res.on("data", (d) => chunks.push(d));
+          res.on("end", () => {
+            let parsed = {};
+            try {
+              parsed = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
+            } catch {
+              reject(new Error(`MyChrome helper returned an invalid answer (HTTP ${res.statusCode}).`));
+              return;
+            }
+            if (res.statusCode === 403) reject(new Error("MyChrome helper rejected the token. Re-run the installer."));
+            else if (parsed.ok) resolve(fromWire(parsed.result));
+            else reject(new Error(parsed.error || `MyChrome helper error (HTTP ${res.statusCode}).`));
+          });
+        }
+      );
+      req.on(
+        "error",
+        (err) => reject(new Error(`MyChrome helper is not reachable (${err.message}). Antigravity starts it with the "MyChrome helper" sidecar.`))
+      );
+      req.end(body);
+    });
+  }
+  askUser(...a) {
+    return this.call("askUser", a);
+  }
+  canEndTurnSafely(...a) {
+    return this.call("canEndTurnSafely", a);
+  }
+  connectPanel(...a) {
+    return this.call("connectPanel", a);
+  }
+  executeBrowserCommand(...a) {
+    return this.call("executeBrowserCommand", a);
+  }
+  formatMessagesForAgent(...a) {
+    return this.call("formatMessagesForAgent", a);
+  }
+  readPanelMessages(...a) {
+    return this.call("readPanelMessages", a);
+  }
+  requestConfirmation(...a) {
+    return this.call("requestConfirmation", a);
+  }
+  sendReply(...a) {
+    return this.call("sendReply", a);
+  }
+  takeInterrupts(...a) {
+    return this.call("takeInterrupts", a);
+  }
+  updatePlan(...a) {
+    return this.call("updatePlan", a);
+  }
+  waitForUserMessage(...a) {
+    return this.call("waitForUserMessage", a);
+  }
+  ensureExtension(...a) {
+    return this.call("ensureExtension", a);
+  }
+  getAgentStatus(...a) {
+    return this.call("getAgentStatus", a);
+  }
+};
+
 // src/index.ts
 var __filename = fileURLToPath(import.meta.url);
-var __dirname = path6.dirname(__filename);
-var BRIDGE_ROOT = path6.resolve(__dirname, "..");
+var __dirname = path7.dirname(__filename);
+var BRIDGE_ROOT = path7.resolve(__dirname, "..");
 async function main() {
   const stateDir = process.env.MYCHROME_DATA_DIR || getDataDir();
   const logsDir = process.env.MYCHROME_LOGS_DIR || getLogsDir(BRIDGE_ROOT);
   const logger = new Logger(logsDir);
-  logger.info(`Initializing MyChrome MCP Bridge v${BRIDGE_VERSION} (node ${process.version}, ${process.platform})...`);
-  const { token, isNew } = getOrCreatePairingToken(stateDir);
-  if (isNew) {
-    logger.info(`Generated new pairing token in ${stateDir}`);
-    process.stderr.write(`
-======================================================
-`);
-    process.stderr.write(` [MyChrome] Pairing Token Generated:
-`);
-    process.stderr.write(` ${token}
-`);
-    process.stderr.write(` (Automatic pairing is enabled for MyChrome extension)
-`);
-    process.stderr.write(`======================================================
-
-`);
-  } else {
-    logger.info(`Using existing pairing token from ${stateDir}.`);
-  }
   const port = parseInt(process.env.BRIDGE_PORT || "8765", 10);
-  const holdSeconds = parseInt(process.env.BRIDGE_HOLD_SECONDS || "1800", 10);
-  const wsServer = new BridgeWSServer(port, token, logger, {
-    stateDir,
-    holdSeconds: Number.isFinite(holdSeconds) ? holdSeconds : 1800
-  });
-  await wsServer.start();
-  const mcpServer = createMcpServer(wsServer, logger);
+  getOrCreatePairingToken(stateDir);
+  let bridge;
+  if (process.env.MYCHROME_INPROCESS === "1") {
+    logger.info(`[MCP] v${BRIDGE_VERSION} in-process mode.`);
+    const { token } = getOrCreatePairingToken(stateDir);
+    const server = new BridgeWSServer(port, token, logger, { stateDir });
+    await server.start();
+    bridge = server;
+  } else {
+    const ok = await ensureHelper(port, __dirname, logger);
+    logger.info(`[MCP] v${BRIDGE_VERSION} started for a conversation. Helper ${ok ? "is running" : "is NOT reachable"} on port ${port}.`);
+    bridge = new RemoteBridge(port, stateDir);
+  }
+  const mcpServer = createMcpServer(bridge, logger);
   const transport = new StdioServerTransport();
   await mcpServer.connect(transport);
-  logger.info("MyChrome MCP Server connected to stdio transport successfully.");
-  process.stdin.on("end", () => {
-    logger.info("[MCP] stdin ended. Exiting...");
+  const exit = (why) => {
+    logger.info(`[MCP] ${why}. Exiting (the helper keeps running).`);
     process.exit(0);
-  });
-  process.stdin.on("close", () => {
-    logger.info("[MCP] stdin closed. Exiting...");
-    process.exit(0);
-  });
-  if (transport.onclose !== void 0) {
-    transport.onclose = () => {
-      logger.info("[MCP] Transport closed. Exiting...");
-      process.exit(0);
-    };
-  }
+  };
+  process.stdin.on("end", () => exit("stdin ended"));
+  process.stdin.on("close", () => exit("stdin closed"));
+  transport.onclose = () => exit("transport closed");
 }
 main().catch((err) => {
-  console.error("Fatal error starting MyChrome bridge:", err);
+  console.error("Fatal error starting MyChrome MCP server:", err);
   process.exit(1);
 });

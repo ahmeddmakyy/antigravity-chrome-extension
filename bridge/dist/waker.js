@@ -2,6 +2,7 @@ import { createRequire as __createRequire } from 'module'; const require = __cre
 
 // src/waker.ts
 import fs2 from "fs";
+import os2 from "os";
 import path2 from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
@@ -41,8 +42,13 @@ var BRIDGE_ROOT = path2.resolve(__dirname, "..");
 var PORT = parseInt(process.env.BRIDGE_PORT || "8765", 10);
 var BASE = `http://127.0.0.1:${PORT}`;
 var JOB_TIMEOUT_MS = 2e4;
+var logSink = null;
+function setWakerLogger(fn) {
+  logSink = fn;
+}
 function log(message) {
-  process.stdout.write(`[${(/* @__PURE__ */ new Date()).toISOString()}] ${message}
+  if (logSink) logSink(`[Waker] ${message}`);
+  else process.stdout.write(`[${(/* @__PURE__ */ new Date()).toISOString()}] ${message}
 `);
 }
 function readToken() {
@@ -63,7 +69,9 @@ function resolveAgentApi() {
   }
   const isWin = process.platform === "win32";
   const exts = isWin ? ["", ".exe", ".cmd", ".bat"] : [""];
-  const dirs = (process.env.PATH || process.env.Path || "").split(path2.delimiter).filter(Boolean);
+  const home = os2.homedir();
+  const knownDirs = ["antigravity", "antigravity-cli", "antigravity-ide"].map((d) => path2.join(home, ".gemini", d, "bin"));
+  const dirs = [...(process.env.PATH || process.env.Path || "").split(path2.delimiter).filter(Boolean), ...knownDirs];
   for (const preferShim of [false, true]) {
     for (const dir of dirs) {
       for (const ext of exts) {
@@ -123,11 +131,11 @@ async function postResult(token, body) {
     log(`Could not report a job result: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
-async function main() {
+async function runWaker() {
   log(`MyChrome waker started. Bridge: ${BASE}`);
   let api = resolveAgentApi();
   while (!api) {
-    log("agentapi was not found on PATH. Is this running as an Antigravity sidecar? Retrying in 30s.");
+    log("agentapi was not found (PATH and ~/.gemini/antigravity*/bin). Retrying in 30s.");
     await sleep(3e4);
     api = resolveAgentApi();
   }
@@ -147,7 +155,7 @@ async function main() {
         signal: AbortSignal.timeout(35e3)
       });
     } catch {
-      if (!bridgeWasDown) log("Bridge is not reachable yet. It starts with Antigravity's MCP servers.");
+      if (!bridgeWasDown) log("Helper is not reachable yet.");
       bridgeWasDown = true;
       await sleep(3e3);
       continue;
@@ -180,7 +188,15 @@ async function main() {
     await postResult(token, { jobId: job.jobId, ...result });
   }
 }
-main().catch((err) => {
-  log(`Fatal: ${err instanceof Error ? err.stack || err.message : String(err)}`);
-  process.exit(1);
-});
+var startedDirectly = Boolean(process.argv[1]) && path2.resolve(process.argv[1]) === path2.resolve(__filename);
+if (startedDirectly && path2.basename(__filename).startsWith("waker.")) {
+  runWaker().catch((err) => {
+    log(`Fatal: ${err instanceof Error ? err.stack || err.message : String(err)}`);
+    process.exit(1);
+  });
+}
+export {
+  resolveAgentApi,
+  runWaker,
+  setWakerLogger
+};

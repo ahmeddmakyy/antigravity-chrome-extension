@@ -181,7 +181,7 @@
   "tipPlanText": "اعمل خطة قصيرة الأول، وبعدين ابدأ.",
   "queuedBusy": "Antigravity هيقرا دي مع الخطوة الجاية.",
   "shotAttached": "مرفق صورة للشاشة",
-  "versionPanelMismatch": "كروم لسه مشغّل جزء قديم من الإضافة (الخلفية {b}، الشريط {p}). افتح chrome://extensions واضغط Reload على Antigravity، وبعدين اقفل الشريط ده وافتحه تاني.",
+  "versionPanelMismatch": "كروم لسه مشغّل جزء قديم من الإضافة (الخلفية {b}، الشريط {p}). افتح chrome://extensions واضغط Reload على MyChrome، وبعدين اقفل الشريط ده وافتحه تاني.",
   "versionBridgeOld": "الكوبري اللي على جهازك قديم ({v}). اقفل Antigravity خالص وافتحه تاني.",
   "versionsLine": "Panel {p} · Background {b} · Bridge {r}",
   "lbCaption": "صورة للصفحة",

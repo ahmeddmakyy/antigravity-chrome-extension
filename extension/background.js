@@ -24,7 +24,7 @@ import {
   selectorExistsScript,
 } from "./bg/page-scripts.js";
 
-const BUILD = "5.1.0";
+const BUILD = "5.2.0";
 const PANEL_PORT = "antigravity-sidepanel";
 const BACKOFF_STEPS = [2000, 5000, 15000, 30000, 60000];
 
@@ -530,6 +530,54 @@ function scheduleReconnect(fixedDelay) {
 
 connectBridgeWebSocket();
 
+/** Skip the backoff and try right now (a panel opened, or the helper asked for us). */
+function connectNow(reason) {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  logEvent("background", "connect_now", { reason });
+  failedAttempts = 0;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  connectBridgeWebSocket();
+}
+
+function isBridgeConnected() {
+  return Boolean(ws && ws.readyState === WebSocket.OPEN && bridgeVersion !== null);
+}
+
+async function waitForBridge(ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (isBridgeConnected()) return true;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return isBridgeConnected();
+}
+
+// The helper opens http://127.0.0.1:8765/connect when it needs Chrome (for example after /mychrome).
+// That page wakes this service worker; we connect, then tidy the tab away.
+chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
+  if (msg?.type !== "mychrome_wake") return false;
+  connectNow("wake_page");
+  sendResponse({ ok: true, version: BUILD });
+  const fromConnectPage = /^http:\/\/(127\.0\.0\.1|localhost):\d+\/connect/.test(sender.url || "");
+  const tabId = sender.tab?.id;
+  if (fromConnectPage && typeof tabId === "number") {
+    waitForBridge(10000).then(async (ok) => {
+      if (!ok) return;
+      try {
+        const tab = await chrome.tabs.get(tabId);
+        const siblings = await chrome.tabs.query({ windowId: tab.windowId });
+        // Closing the only tab would close the window (and maybe Chrome): turn it into a new tab instead.
+        if (siblings.length > 1) await chrome.tabs.remove(tabId);
+        else await chrome.tabs.update(tabId, { url: "chrome://newtab/" });
+      } catch {}
+    });
+  }
+  return false;
+});
+
 // ---------------------------------------------------------------------------
 // Panels (one per tab that has the side panel open)
 // ---------------------------------------------------------------------------
@@ -592,6 +640,7 @@ chrome.runtime.onConnect.addListener((port) => {
     if (msg.type === "hello") {
       panels.set(port, { tabId: msg.tabId ?? null, build: msg.build || null });
       logEvent("background", "panel_connected", { tabId: msg.tabId, panelBuild: msg.build, match: msg.build === BUILD });
+      if (!isBridgeConnected()) connectNow("panel_opened");
       if (msg.build && msg.build !== BUILD) {
         sendToBridge({ type: "client_event", name: "version_mismatch", data: { panel: msg.build, background: BUILD } });
       }

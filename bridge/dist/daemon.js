@@ -3718,28 +3718,14 @@ var require_websocket_server = __commonJS({
   }
 });
 
-// node_modules/ws/wrapper.mjs
-var import_stream = __toESM(require_stream(), 1);
-var import_extension = __toESM(require_extension(), 1);
-var import_permessage_deflate = __toESM(require_permessage_deflate(), 1);
-var import_receiver = __toESM(require_receiver(), 1);
-var import_sender = __toESM(require_sender(), 1);
-var import_subprotocol = __toESM(require_subprotocol(), 1);
-var import_websocket = __toESM(require_websocket(), 1);
-var import_websocket_server = __toESM(require_websocket_server(), 1);
+// src/daemon.ts
+import path7 from "path";
+import { fileURLToPath as fileURLToPath2 } from "url";
 
-// src/ws-server.ts
-import http from "http";
-import { spawn } from "child_process";
-import fs3 from "fs";
-import path3 from "path";
-
-// src/version.ts
-var BRIDGE_VERSION = "5.2.0";
-
-// src/constants.ts
-var EXTENSION_ID = "aeofpcedejopeeebdjfkapcabkkflhej";
-var EXTENSION_ORIGIN = `chrome-extension://${EXTENSION_ID}`;
+// src/token.ts
+import fs2 from "fs";
+import path2 from "path";
+import crypto from "crypto";
 
 // src/paths.ts
 import os from "os";
@@ -3751,6 +3737,39 @@ function getDataDir() {
   }
   const home = process.env.MYCHROME_HOME_DIR || os.homedir();
   return path.join(home, ".gemini", "mychrome");
+}
+function getTokenPath(fallbackDir) {
+  if (process.env.MYCHROME_TOKEN_FILE) {
+    return path.resolve(process.env.MYCHROME_TOKEN_FILE);
+  }
+  const dataDirToken = path.join(getDataDir(), ".token");
+  if (fs.existsSync(dataDirToken)) {
+    return dataDirToken;
+  }
+  if (fallbackDir) {
+    const fallbackToken = path.join(fallbackDir, ".token");
+    if (fs.existsSync(fallbackToken)) {
+      return fallbackToken;
+    }
+  }
+  return dataDirToken;
+}
+function getLogsDir(fallbackDir) {
+  if (process.env.MYCHROME_LOGS_DIR) {
+    return path.resolve(process.env.MYCHROME_LOGS_DIR);
+  }
+  const dataDir = getDataDir();
+  if (fallbackDir && !fs.existsSync(dataDir) && fs.existsSync(fallbackDir)) {
+    return path.join(fallbackDir, "logs");
+  }
+  const logs = path.join(dataDir, "logs");
+  try {
+    if (!fs.existsSync(logs)) {
+      fs.mkdirSync(logs, { recursive: true, mode: 448 });
+    }
+  } catch {
+  }
+  return logs;
 }
 function getUploadsDir(fallbackDir) {
   if (process.env.MYCHROME_UPLOADS_DIR) {
@@ -3770,9 +3789,124 @@ function getUploadsDir(fallbackDir) {
   return uploads;
 }
 
+// src/token.ts
+function getOrCreatePairingToken(baseDir) {
+  const tokenPath = getTokenPath(baseDir);
+  try {
+    if (fs2.existsSync(tokenPath)) {
+      const existing = fs2.readFileSync(tokenPath, "utf-8").trim();
+      if (existing.length >= 16) {
+        return { token: existing, isNew: false };
+      }
+    }
+  } catch {
+  }
+  const dir = path2.dirname(tokenPath);
+  try {
+    if (!fs2.existsSync(dir)) {
+      fs2.mkdirSync(dir, { recursive: true, mode: 448 });
+    }
+  } catch {
+  }
+  const newToken = crypto.randomBytes(24).toString("hex");
+  try {
+    fs2.writeFileSync(tokenPath, newToken, { encoding: "utf-8", mode: 384 });
+  } catch (err) {
+    console.error(`[Token] Failed to write token to ${tokenPath}:`, err);
+  }
+  return { token: newToken, isNew: true };
+}
+
+// src/logger.ts
+import fs3 from "fs";
+import path3 from "path";
+var Logger = class {
+  logFilePath;
+  listeners = [];
+  constructor(logsDir) {
+    if (!fs3.existsSync(logsDir)) {
+      try {
+        fs3.mkdirSync(logsDir, { recursive: true });
+      } catch (err) {
+      }
+    }
+    this.logFilePath = path3.join(logsDir, "bridge.log");
+  }
+  addListener(listener) {
+    this.listeners.push(listener);
+  }
+  removeListener(listener) {
+    this.listeners = this.listeners.filter((l) => l !== listener);
+  }
+  log(level, message, data) {
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+    const dataStr = data ? " " + (typeof data === "string" ? data : JSON.stringify(data)) : "";
+    const line = `[${timestamp}] [${level}] ${message}${dataStr}
+`;
+    try {
+      fs3.appendFileSync(this.logFilePath, line, "utf-8");
+    } catch {
+    }
+    if (level === "ERROR" || level === "WARN") {
+      process.stderr.write(line);
+    }
+    for (const listener of this.listeners) {
+      try {
+        listener(level, message, data);
+      } catch {
+      }
+    }
+  }
+  getRecentLines(maxLines = 500) {
+    try {
+      if (!fs3.existsSync(this.logFilePath)) return [];
+      const content = fs3.readFileSync(this.logFilePath, "utf-8");
+      const lines = content.split("\n").filter((l) => l.trim().length > 0);
+      return lines.slice(-maxLines);
+    } catch {
+      return [];
+    }
+  }
+  info(msg, data) {
+    this.log("INFO", msg, data);
+  }
+  warn(msg, data) {
+    this.log("WARN", msg, data);
+  }
+  error(msg, data) {
+    this.log("ERROR", msg, data);
+  }
+  debug(msg, data) {
+    this.log("DEBUG", msg, data);
+  }
+};
+
+// node_modules/ws/wrapper.mjs
+var import_stream = __toESM(require_stream(), 1);
+var import_extension = __toESM(require_extension(), 1);
+var import_permessage_deflate = __toESM(require_permessage_deflate(), 1);
+var import_receiver = __toESM(require_receiver(), 1);
+var import_sender = __toESM(require_sender(), 1);
+var import_subprotocol = __toESM(require_subprotocol(), 1);
+var import_websocket = __toESM(require_websocket(), 1);
+var import_websocket_server = __toESM(require_websocket_server(), 1);
+
+// src/ws-server.ts
+import http from "http";
+import { spawn } from "child_process";
+import fs5 from "fs";
+import path5 from "path";
+
+// src/version.ts
+var BRIDGE_VERSION = "5.2.0";
+
+// src/constants.ts
+var EXTENSION_ID = "aeofpcedejopeeebdjfkapcabkkflhej";
+var EXTENSION_ORIGIN = `chrome-extension://${EXTENSION_ID}`;
+
 // src/upload-manager.ts
-import fs2 from "fs";
-import path2 from "path";
+import fs4 from "fs";
+import path4 from "path";
 var WINDOWS_RESERVED = /* @__PURE__ */ new Set([
   "CON",
   "PRN",
@@ -3804,8 +3938,8 @@ function sanitizeFileName(rawName) {
   clean = clean.replace(/[\x00-\x1f<>:"/\\|?*]/g, "_");
   clean = clean.replace(/[. ]+$/, "");
   if (!clean) clean = "upload";
-  const ext = path2.extname(clean);
-  const stem = path2.basename(clean, ext);
+  const ext = path4.extname(clean);
+  const stem = path4.basename(clean, ext);
   if (WINDOWS_RESERVED.has(stem.toUpperCase())) {
     clean = `_${stem}${ext}`;
   }
@@ -3819,13 +3953,13 @@ function sanitizeFileName(rawName) {
 async function saveAttachment(messageId, index, attachment, customUploadsDir) {
   const uploadsRoot = customUploadsDir || getUploadsDir();
   const dateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const dayDir = path2.join(uploadsRoot, dateStr);
-  if (!fs2.existsSync(dayDir)) {
-    fs2.mkdirSync(dayDir, { recursive: true, mode: 448 });
+  const dayDir = path4.join(uploadsRoot, dateStr);
+  if (!fs4.existsSync(dayDir)) {
+    fs4.mkdirSync(dayDir, { recursive: true, mode: 448 });
   }
   const safeName = sanitizeFileName(attachment.name || `file_${index}`);
   const fileName = `${messageId}-${index}-${safeName}`;
-  const filePath = path2.join(dayDir, fileName);
+  const filePath = path4.join(dayDir, fileName);
   let rawData = attachment.data;
   const commaIdx = rawData.indexOf(",");
   if (commaIdx !== -1 && rawData.slice(0, commaIdx).includes(";base64")) {
@@ -3835,7 +3969,7 @@ async function saveAttachment(messageId, index, attachment, customUploadsDir) {
   if (buffer.length > MAX_FILE_SIZE_BYTES) {
     throw new Error(`File "${attachment.name}" exceeds 10 MB size limit after decoding.`);
   }
-  fs2.writeFileSync(filePath, buffer);
+  fs4.writeFileSync(filePath, buffer);
   const isImage = attachment.mime?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(safeName);
   let dataUrl = void 0;
   if (isImage) {
@@ -3846,21 +3980,21 @@ async function saveAttachment(messageId, index, attachment, customUploadsDir) {
     name: attachment.name,
     mime: attachment.mime || "application/octet-stream",
     size: buffer.length,
-    path: path2.resolve(filePath),
+    path: path4.resolve(filePath),
     isImage,
     dataUrl
   };
 }
 function cleanOldUploads(maxAgeDays = 7, customUploadsDir) {
   const uploadsRoot = customUploadsDir || getUploadsDir();
-  if (!fs2.existsSync(uploadsRoot)) return 0;
+  if (!fs4.existsSync(uploadsRoot)) return 0;
   let cleaned = 0;
   const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1e3;
   const now = Date.now();
   try {
-    const entries = fs2.readdirSync(uploadsRoot, { withFileTypes: true });
+    const entries = fs4.readdirSync(uploadsRoot, { withFileTypes: true });
     for (const entry of entries) {
-      const fullPath = path2.join(uploadsRoot, entry.name);
+      const fullPath = path4.join(uploadsRoot, entry.name);
       if (entry.isDirectory()) {
         const dateMatch = entry.name.match(/^(\d{4})-(\d{2})-(\d{2})$/);
         let folderAgeMs;
@@ -3868,17 +4002,17 @@ function cleanOldUploads(maxAgeDays = 7, customUploadsDir) {
           const folderDate = (/* @__PURE__ */ new Date(`${entry.name}T00:00:00Z`)).getTime();
           folderAgeMs = now - folderDate;
         } else {
-          const stat = fs2.statSync(fullPath);
+          const stat = fs4.statSync(fullPath);
           folderAgeMs = now - stat.mtimeMs;
         }
         if (folderAgeMs > maxAgeMs) {
-          fs2.rmSync(fullPath, { recursive: true, force: true });
+          fs4.rmSync(fullPath, { recursive: true, force: true });
           cleaned++;
         }
       } else if (entry.isFile()) {
-        const stat = fs2.statSync(fullPath);
+        const stat = fs4.statSync(fullPath);
         if (now - stat.mtimeMs > maxAgeMs) {
-          fs2.unlinkSync(fullPath);
+          fs4.unlinkSync(fullPath);
           cleaned++;
         }
       }
@@ -3918,9 +4052,6 @@ var RPC_METHODS = /* @__PURE__ */ new Set([
 function toWire(value) {
   return JSON.parse(JSON.stringify(value === void 0 ? null : value, (_k, v) => v instanceof Map ? { __map: [...v.entries()] } : v));
 }
-function fromWire(value) {
-  return JSON.parse(JSON.stringify(value), (_k, v) => v && typeof v === "object" && Array.isArray(v.__map) ? new Map(v.__map) : v);
-}
 function defaultChromeLauncher(url) {
   const tryOne = (cmd, args, opts = {}) => {
     try {
@@ -3934,19 +4065,19 @@ function defaultChromeLauncher(url) {
     }
   };
   const custom = process.env.MYCHROME_CHROME_PATH;
-  if (custom && fs3.existsSync(custom)) return tryOne(custom, [url]);
+  if (custom && fs5.existsSync(custom)) return tryOne(custom, [url]);
   if (process.platform === "win32") {
     const roots = [process.env["PROGRAMFILES"], process.env["PROGRAMFILES(X86)"], process.env["LOCALAPPDATA"]].filter(Boolean);
     for (const r of roots) {
-      const exe = path3.join(r, "Google", "Chrome", "Application", "chrome.exe");
-      if (fs3.existsSync(exe)) return tryOne(exe, [url]);
+      const exe = path5.join(r, "Google", "Chrome", "Application", "chrome.exe");
+      if (fs5.existsSync(exe)) return tryOne(exe, [url]);
     }
     return tryOne("cmd.exe", ["/d", "/s", "/c", `start "" chrome "${url}"`], { windowsVerbatimArguments: true });
   }
   if (process.platform === "darwin") return tryOne("open", ["-a", "Google Chrome", url]);
   for (const bin of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]) {
-    for (const dir of (process.env.PATH || "").split(path3.delimiter)) {
-      if (dir && fs3.existsSync(path3.join(dir, bin))) return tryOne(path3.join(dir, bin), [url]);
+    for (const dir of (process.env.PATH || "").split(path5.delimiter)) {
+      if (dir && fs5.existsSync(path5.join(dir, bin))) return tryOne(path5.join(dir, bin), [url]);
     }
   }
   return false;
@@ -4437,13 +4568,13 @@ var BridgeWSServer = class {
   // Session persistence (.session.json)
   // ==========================================================
   sessionFile() {
-    return this.stateDir ? path3.join(this.stateDir, ".session.json") : null;
+    return this.stateDir ? path5.join(this.stateDir, ".session.json") : null;
   }
   loadSessionState() {
     const file = this.sessionFile();
-    if (!file || !fs3.existsSync(file)) return;
+    if (!file || !fs5.existsSync(file)) return;
     try {
-      const data = JSON.parse(fs3.readFileSync(file, "utf-8"));
+      const data = JSON.parse(fs5.readFileSync(file, "utf-8"));
       if (typeof data.linkedConversationId === "string" && UUID_RE.test(data.linkedConversationId)) {
         this.linkedConversationId = data.linkedConversationId;
       }
@@ -4461,9 +4592,9 @@ var BridgeWSServer = class {
     if (!file) return;
     try {
       let current = {};
-      if (fs3.existsSync(file)) {
+      if (fs5.existsSync(file)) {
         try {
-          current = JSON.parse(fs3.readFileSync(file, "utf-8"));
+          current = JSON.parse(fs5.readFileSync(file, "utf-8"));
         } catch {
         }
       }
@@ -4472,7 +4603,7 @@ var BridgeWSServer = class {
         linkedConversationId: this.linkedConversationId,
         hooksSeenAt: this.hooksSeenAt
       };
-      fs3.writeFileSync(file, JSON.stringify(next, null, 2), "utf-8");
+      fs5.writeFileSync(file, JSON.stringify(next, null, 2), "utf-8");
     } catch (err) {
       this.logger.warn(`[Session] Could not write .session.json: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -5506,11 +5637,203 @@ var BridgeWSServer = class {
     this.logger.info("[WS] Server gracefully stopped.");
   }
 };
-export {
-  BridgeWSServer,
-  defaultChromeLauncher,
-  fromWire,
-  lightResult,
-  summarizeResult,
-  toWire
-};
+
+// src/waker.ts
+import fs6 from "fs";
+import os2 from "os";
+import path6 from "path";
+import { spawn as spawn2 } from "child_process";
+import { fileURLToPath } from "url";
+var __filename = fileURLToPath(import.meta.url);
+var __dirname = path6.dirname(__filename);
+var BRIDGE_ROOT = path6.resolve(__dirname, "..");
+var PORT = parseInt(process.env.BRIDGE_PORT || "8765", 10);
+var BASE = `http://127.0.0.1:${PORT}`;
+var JOB_TIMEOUT_MS = 2e4;
+var logSink = null;
+function setWakerLogger(fn) {
+  logSink = fn;
+}
+function log(message) {
+  if (logSink) logSink(`[Waker] ${message}`);
+  else process.stdout.write(`[${(/* @__PURE__ */ new Date()).toISOString()}] ${message}
+`);
+}
+function readToken() {
+  if (process.env.MYCHROME_TOKEN) return process.env.MYCHROME_TOKEN;
+  try {
+    return fs6.readFileSync(getTokenPath(BRIDGE_ROOT), "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+function resolveAgentApi() {
+  const override = process.env.AGENTAPI_BIN;
+  if (override && fs6.existsSync(override)) {
+    return { bin: override, needsShell: /\.(cmd|bat)$/i.test(override) };
+  }
+  const isWin = process.platform === "win32";
+  const exts = isWin ? ["", ".exe", ".cmd", ".bat"] : [""];
+  const home = os2.homedir();
+  const knownDirs = ["antigravity", "antigravity-cli", "antigravity-ide"].map((d) => path6.join(home, ".gemini", d, "bin"));
+  const dirs = [...(process.env.PATH || process.env.Path || "").split(path6.delimiter).filter(Boolean), ...knownDirs];
+  for (const preferShim of [false, true]) {
+    for (const dir of dirs) {
+      for (const ext of exts) {
+        const isShim = /\.(cmd|bat)$/i.test(ext);
+        if (isShim !== preferShim) continue;
+        if (isWin && ext === "") continue;
+        const candidate = path6.join(dir, `agentapi${ext}`);
+        try {
+          if (fs6.statSync(candidate).isFile()) {
+            return { bin: candidate, needsShell: isShim };
+          }
+        } catch {
+        }
+      }
+    }
+  }
+  return null;
+}
+function runAgentApi(api, job) {
+  return new Promise((resolve) => {
+    const useSafe = api.needsShell;
+    const prompt = useSafe ? job.safePrompt.replace(/[^A-Za-z0-9 .,_']/g, " ") : job.prompt;
+    const args = ["send-message", job.conversationId, prompt];
+    const child = useSafe ? spawn2(`"${api.bin}"`, args.map((a) => `"${a}"`), { shell: true, windowsHide: true }) : spawn2(api.bin, args, { shell: false, windowsHide: true });
+    let stderr = "";
+    let stdout = "";
+    child.stdout?.on("data", (d) => stdout += d.toString());
+    child.stderr?.on("data", (d) => stderr += d.toString());
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, error: "agentapi timed out", usedSafePrompt: useSafe });
+    }, JOB_TIMEOUT_MS);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: `agentapi could not start: ${err.message}`, usedSafePrompt: useSafe });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve({ ok: true, usedSafePrompt: useSafe });
+      } else {
+        const detail = (stderr || stdout).trim().slice(0, 400);
+        resolve({ ok: false, error: `agentapi exited with code ${code}${detail ? `: ${detail}` : ""}`, usedSafePrompt: useSafe });
+      }
+    });
+  });
+}
+async function postResult(token, body) {
+  try {
+    await fetch(`${BASE}/waker/result`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-bridge-token": token },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(5e3)
+    });
+  } catch (err) {
+    log(`Could not report a job result: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+async function runWaker() {
+  log(`MyChrome waker started. Bridge: ${BASE}`);
+  let api = resolveAgentApi();
+  while (!api) {
+    log("agentapi was not found (PATH and ~/.gemini/antigravity*/bin). Retrying in 30s.");
+    await sleep(3e4);
+    api = resolveAgentApi();
+  }
+  log(`Using agentapi at ${api.bin}${api.needsShell ? " (shell shim, safe prompts only)" : ""}`);
+  let bridgeWasDown = false;
+  for (; ; ) {
+    const token = readToken();
+    if (!token) {
+      log("bridge/.token is missing. Waiting for the bridge to create it.");
+      await sleep(5e3);
+      continue;
+    }
+    let res;
+    try {
+      res = await fetch(`${BASE}/waker/next`, {
+        headers: { "x-bridge-token": token },
+        signal: AbortSignal.timeout(35e3)
+      });
+    } catch {
+      if (!bridgeWasDown) log("Helper is not reachable yet.");
+      bridgeWasDown = true;
+      await sleep(3e3);
+      continue;
+    }
+    if (bridgeWasDown) {
+      log("Bridge is reachable.");
+      bridgeWasDown = false;
+    }
+    if (res.status === 204) continue;
+    if (res.status === 403) {
+      log("The bridge rejected our token. Re-reading bridge/.token in 5s.");
+      await sleep(5e3);
+      continue;
+    }
+    if (res.status !== 200) {
+      log(`Unexpected status ${res.status} from the bridge.`);
+      await sleep(3e3);
+      continue;
+    }
+    let job;
+    try {
+      job = await res.json();
+    } catch {
+      continue;
+    }
+    if (!job || job.action !== "send-message" || !job.conversationId) continue;
+    log(`Delivering ${job.jobId} to conversation ${job.conversationId}`);
+    const result = await runAgentApi(api, job);
+    log(result.ok ? `Delivered ${job.jobId}` : `Failed ${job.jobId}: ${result.error}`);
+    await postResult(token, { jobId: job.jobId, ...result });
+  }
+}
+var startedDirectly = Boolean(process.argv[1]) && path6.resolve(process.argv[1]) === path6.resolve(__filename);
+if (startedDirectly && path6.basename(__filename).startsWith("waker.")) {
+  runWaker().catch((err) => {
+    log(`Fatal: ${err instanceof Error ? err.stack || err.message : String(err)}`);
+    process.exit(1);
+  });
+}
+
+// src/daemon.ts
+var __filename2 = fileURLToPath2(import.meta.url);
+var BRIDGE_ROOT2 = path7.resolve(path7.dirname(__filename2), "..");
+async function main() {
+  const stateDir = process.env.MYCHROME_DATA_DIR || getDataDir();
+  const logsDir = process.env.MYCHROME_LOGS_DIR || getLogsDir(BRIDGE_ROOT2);
+  const logger = new Logger(logsDir);
+  const startedBy = process.env.MYCHROME_STARTED_BY || "sidecar";
+  logger.info(`Starting MyChrome helper v${BRIDGE_VERSION} (started by ${startedBy}, node ${process.version}, ${process.platform}).`);
+  const { token } = getOrCreatePairingToken(stateDir);
+  const port = parseInt(process.env.BRIDGE_PORT || "8765", 10);
+  const holdSeconds = parseInt(process.env.BRIDGE_HOLD_SECONDS || "1800", 10);
+  const server = new BridgeWSServer(port, token, logger, {
+    stateDir,
+    holdSeconds: Number.isFinite(holdSeconds) ? holdSeconds : 1800
+  });
+  await server.start();
+  logger.info(`MyChrome helper is listening on 127.0.0.1:${port}.`);
+  if (process.env.MYCHROME_NO_WAKER !== "1") {
+    setWakerLogger((m) => logger.info(m));
+    runWaker().catch((err) => logger.error(`[Waker] stopped: ${err instanceof Error ? err.message : String(err)}`));
+  }
+  const shutdown = (signal) => {
+    logger.info(`MyChrome helper stopping (${signal}).`);
+    server.stop().finally(() => process.exit(0));
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+}
+main().catch((err) => {
+  console.error("Fatal error starting the MyChrome helper:", err);
+  process.exit(1);
+});
