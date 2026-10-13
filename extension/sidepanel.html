@@ -40,6 +40,10 @@
         <h2 id="popTitle" dir="auto"></h2>
       </div>
       <p class="popover-body" id="popBody" dir="auto"></p>
+      <div class="popover-link-meta" id="popLinkMeta" hidden>
+        <span class="popover-link-text" id="popLinkText" dir="auto"></span>
+        <button class="pill-btn compact" id="popResetLinkBtn" type="button"><span data-i18n="linkReset"></span></button>
+      </div>
       <ul class="checks" id="popChecks"></ul>
       <div class="popover-actions" id="popActions"></div>
     </div>
@@ -92,8 +96,10 @@
           </ul>
         </div>
         <div class="setup-card" id="setupCard" hidden></div>
+        <div class="pairing-card" id="pairingCard" hidden></div>
         <div class="suggestions" id="suggestions"></div>
       </section>
+      <div class="approval-container" id="approvalContainer"></div>
       <div class="thread" id="thread" aria-live="polite"></div>
     </main>
 
@@ -128,6 +134,24 @@
               <button type="button" class="attach-menu-item" id="attachShotBtn">
                 <span data-icon="camera"></span>
                 <span data-i18n="attachScreenshot"></span>
+              </button>
+            </div>
+          </div>
+          <div class="mode-wrap" id="modeWrap">
+            <button class="mini-btn mode-btn" id="modeBtn" type="button" aria-haspopup="menu" aria-expanded="false" data-i18n-title="modeBtnTitle">
+              <span class="mode-btn-icon" data-icon="hand"></span>
+              <span class="mode-btn-label" id="modeBtnLabel"></span>
+            </button>
+            <div class="attach-menu mode-menu" id="modeMenu" role="menu" hidden>
+              <button type="button" class="attach-menu-item" id="modeManualBtn" role="menuitemradio" aria-checked="true">
+                <span data-icon="hand"></span>
+                <span data-i18n="modeManual"></span>
+                <span class="mode-check" data-icon="check"></span>
+              </button>
+              <button type="button" class="attach-menu-item" id="modeAutoBtn" role="menuitemradio" aria-checked="false">
+                <span data-icon="fast-forward"></span>
+                <span data-i18n="modeAuto"></span>
+                <span class="mode-check" data-icon="check" hidden></span>
               </button>
             </div>
           </div>
@@ -196,16 +220,39 @@
               <label class="field"><span data-i18n="port"></span><input id="portInput" type="number" min="1" max="65535" inputmode="numeric"></label>
               <label class="field">
                 <span data-i18n="token"></span>
-                <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="Optional for extension">
+                <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" data-i18n-ph="tokenPlaceholder">
                 <small dir="auto" data-i18n="tokenOptionalHelp"></small>
               </label>
             </div>
           </details>
         </div>
 
-        <div class="group">
+        <div class="group" id="grpSafety">
           <div class="group-head"><span class="group-icon" data-icon="shield"></span><h3 data-i18n="grpSafety"></h3></div>
-          <label class="field"><span data-i18n="blocklist"></span><textarea id="blocklistInput" rows="2" dir="ltr"></textarea><small dir="auto" data-i18n="blocklistHelp"></small></label>
+          <div class="field">
+            <label class="switch-row">
+              <span dir="auto" data-i18n="protectSites"></span>
+              <input type="checkbox" class="switch" id="protectSwitch">
+            </label>
+            <small dir="auto" data-i18n="protectSitesHelp"></small>
+          </div>
+          <div class="field">
+            <span data-i18n="grantsTitle"></span>
+            <div class="grants-wrap" id="grantsWrap">
+              <ul class="grants-list" id="grantsList" hidden></ul>
+              <p class="grants-empty" id="grantsEmpty" dir="auto" data-i18n="grantsEmpty"></p>
+            </div>
+          </div>
+          <label class="field">
+            <span data-i18n="blocklist"></span>
+            <textarea id="blocklistInput" rows="2" dir="ltr" data-i18n-ph="blocklistPlaceholder"></textarea>
+            <small dir="auto" data-i18n="blocklistHelp"></small>
+          </label>
+          <label class="field">
+            <span data-i18n="allowProtectedTitle"></span>
+            <textarea id="allowProtectedInput" rows="2" dir="ltr" data-i18n-ph="allowProtectedPlaceholder"></textarea>
+            <small dir="auto" data-i18n="allowProtectedHelp"></small>
+          </label>
         </div>
 
         <div class="group">
@@ -315,6 +362,19 @@
       <div class="dialog-actions">
         <button class="ghost-btn" id="confirmCancel" type="button"></button>
         <button class="solid-btn" id="confirmOk" type="button"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auto-mode confirmation dialog -->
+  <div class="layer layer-center" id="autoConfirmLayer" data-open="false">
+    <div class="backdrop" data-close></div>
+    <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="autoConfirmTitle">
+      <h2 id="autoConfirmTitle" dir="auto" data-i18n="autoConfirmTitle"></h2>
+      <p id="autoConfirmBody" dir="auto" data-i18n="autoConfirmBody"></p>
+      <div class="dialog-actions">
+        <button class="ghost-btn" id="autoConfirmCancel" type="button" data-close data-i18n="autoConfirmCancel"></button>
+        <button class="solid-btn" id="autoConfirmOk" type="button" data-i18n="autoConfirmOk"></button>
       </div>
     </div>
   </div>

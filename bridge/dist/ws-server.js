@@ -3733,9 +3733,10 @@ import http from "http";
 import { spawn } from "child_process";
 import fs3 from "fs";
 import path3 from "path";
+import { fileURLToPath } from "url";
 
 // src/version.ts
-var BRIDGE_VERSION = "5.2.0";
+var BRIDGE_VERSION = "5.3.0";
 
 // src/constants.ts
 var EXTENSION_ID = "aeofpcedejopeeebdjfkapcabkkflhej";
@@ -3771,6 +3772,7 @@ function getUploadsDir(fallbackDir) {
 }
 
 // src/upload-manager.ts
+import crypto from "crypto";
 import fs2 from "fs";
 import path2 from "path";
 var WINDOWS_RESERVED = /* @__PURE__ */ new Set([
@@ -3798,6 +3800,91 @@ var WINDOWS_RESERVED = /* @__PURE__ */ new Set([
   "LPT9"
 ]);
 var MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+var ALLOWED_MIME_TYPES = /* @__PURE__ */ new Set([
+  // images
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  // pdf
+  "application/pdf",
+  // text
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/json",
+  "text/html",
+  "text/xml",
+  "application/xml",
+  // Office
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  // docx
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  // xlsx
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  // pptx
+]);
+var ALLOWED_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".pdf",
+  ".txt",
+  ".md",
+  ".csv",
+  ".json",
+  ".html",
+  ".xml",
+  ".docx",
+  ".xlsx",
+  ".pptx"
+]);
+var UPLOAD_RESTRICTION_ERROR = "upload_file only accepts files the user attached in the MyChrome panel (they are stored in the MyChrome uploads folder); ask the user to attach the file in the panel and use the path from the attachment.";
+function resolveUploadPaths(paths, uploadsRoot) {
+  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 5) {
+    return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  }
+  for (const p of paths) {
+    if (typeof p !== "string" || !p.trim()) {
+      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+    }
+  }
+  const root = uploadsRoot ?? getUploadsDir();
+  let realRoot;
+  try {
+    if (!fs2.existsSync(root)) {
+      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+    }
+    realRoot = fs2.realpathSync(root);
+  } catch {
+    return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  }
+  const rootForRel = process.platform === "win32" ? realRoot.toLowerCase() : realRoot;
+  const resolvedPaths = [];
+  for (const rawPath of paths) {
+    try {
+      if (!fs2.existsSync(rawPath)) {
+        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      }
+      const realFilePath = fs2.realpathSync(rawPath);
+      const stat = fs2.statSync(realFilePath);
+      if (!stat.isFile()) {
+        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      }
+      const fileForRel = process.platform === "win32" ? realFilePath.toLowerCase() : realFilePath;
+      const rel = path2.relative(rootForRel, fileForRel);
+      if (rel.startsWith("..") || path2.isAbsolute(rel) || rel === "") {
+        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      }
+      resolvedPaths.push(realFilePath);
+    } catch {
+      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+    }
+  }
+  return { ok: true, paths: resolvedPaths };
+}
 function sanitizeFileName(rawName) {
   if (!rawName || typeof rawName !== "string") return "upload";
   let clean = rawName.trim().split(/[\\/]/).pop() || "";
@@ -3816,15 +3903,38 @@ function sanitizeFileName(rawName) {
   }
   return clean;
 }
+function validateAttachment(attachment) {
+  if (!attachment || typeof attachment !== "object") {
+    return { valid: false, error: "Invalid attachment object" };
+  }
+  if (attachment.size > MAX_FILE_SIZE_BYTES) {
+    return { valid: false, error: `File "${attachment.name}" exceeds 10 MB limit (${(attachment.size / (1024 * 1024)).toFixed(1)} MB)` };
+  }
+  const ext = path2.extname(attachment.name || "").toLowerCase();
+  const mime = (attachment.mime || "").toLowerCase();
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return { valid: false, error: `File type not supported for "${attachment.name}"` };
+  }
+  const mimeAllowed = mime === "" || mime === "application/octet-stream" || mime.startsWith("text/") || ALLOWED_MIME_TYPES.has(mime);
+  if (!mimeAllowed) {
+    return { valid: false, error: `File type not supported for "${attachment.name}"` };
+  }
+  return { valid: true };
+}
 async function saveAttachment(messageId, index, attachment, customUploadsDir) {
+  const validation = validateAttachment(attachment);
+  if (!validation.valid) {
+    throw new Error(validation.error || `Invalid attachment "${attachment?.name}"`);
+  }
   const uploadsRoot = customUploadsDir || getUploadsDir();
   const dateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const dayDir = path2.join(uploadsRoot, dateStr);
   if (!fs2.existsSync(dayDir)) {
     fs2.mkdirSync(dayDir, { recursive: true, mode: 448 });
   }
+  const rand = crypto.randomBytes(3).toString("hex");
   const safeName = sanitizeFileName(attachment.name || `file_${index}`);
-  const fileName = `${messageId}-${index}-${safeName}`;
+  const fileName = `${rand}-${messageId}-${index}-${safeName}`;
   const filePath = path2.join(dayDir, fileName);
   let rawData = attachment.data;
   const commaIdx = rawData.indexOf(",");
@@ -3889,7 +3999,20 @@ function cleanOldUploads(maxAgeDays = 7, customUploadsDir) {
   return cleaned;
 }
 
+// src/token.ts
+import crypto2 from "crypto";
+function safeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length === 0 || b.length === 0) {
+    return false;
+  }
+  const hashA = crypto2.createHash("sha256").update(a).digest();
+  const hashB = crypto2.createHash("sha256").update(b).digest();
+  return crypto2.timingSafeEqual(hashA, hashB);
+}
+
 // src/ws-server.ts
+var __filename = fileURLToPath(import.meta.url);
+var __dirname = path3.dirname(__filename);
 function getAllowedOrigins() {
   const allowed = /* @__PURE__ */ new Set([EXTENSION_ORIGIN]);
   if (process.env.MYCHROME_ALLOWED_ORIGINS) {
@@ -4043,7 +4166,12 @@ var BridgeWSServer = class {
   // Push-mode state (sidecar waker + Stop hook)
   stateDir;
   holdSeconds;
+  linkTtlHours;
   linkedConversationId = null;
+  linkedAt = null;
+  lastUsedAt = null;
+  lastUsedAtSaveTimer = null;
+  lastSessionWriteAt = 0;
   linkPendingSince = 0;
   setupDone = false;
   hooksSeenAt = 0;
@@ -4077,14 +4205,26 @@ var BridgeWSServer = class {
   turnStoppedByUser = false;
   turnSafetyTimer = null;
   lastStatusJson = "";
+  defaultProjectId;
+  defaultConversationBackoffMs;
+  defaultConversationInFlight = false;
+  defaultConversationAttempts = 0;
+  lastDefaultConversationFailureAt = 0;
   statusTicker = null;
+  extensionDir;
   constructor(port, pairingToken, logger, options = {}) {
     this.port = port;
     this.pairingToken = pairingToken;
     this.logger = logger;
     this.stateDir = options.stateDir ?? getDataDir();
+    this.extensionDir = options.extensionDir ?? path3.resolve(__dirname, "..", "..", "extension");
     this.holdSeconds = options.holdSeconds ?? 1800;
     this.presumedIdleMs = options.presumedIdleMs ?? PRESUMED_IDLE_MS;
+    const envTtl = Number(process.env.MYCHROME_LINK_TTL_HOURS);
+    const defaultTtl = Number.isFinite(envTtl) && envTtl > 0 ? envTtl : 6;
+    this.linkTtlHours = typeof options.linkTtlHours === "number" && options.linkTtlHours > 0 ? options.linkTtlHours : defaultTtl;
+    this.defaultProjectId = options.defaultProjectId || process.env.MYCHROME_PROJECT_ID || process.env.ANTIGRAVITY_PROJECT_ID || "default-cli-project";
+    this.defaultConversationBackoffMs = options.defaultConversationBackoffMs ?? 6e4;
     this.chromeLauncher = options.chromeLauncher ?? (process.env.NODE_ENV === "test" || process.env.MYCHROME_NO_LAUNCH === "1" ? () => false : defaultChromeLauncher);
     this.loadSessionState();
     this.logger.addListener((level, message, data) => {
@@ -4109,6 +4249,11 @@ var BridgeWSServer = class {
     return new Promise((resolve, reject) => {
       const setupServer = () => {
         this.httpServer = http.createServer((req, res) => {
+          if (!this.isLocalHost(req.headers.host)) {
+            res.writeHead(421, { "Content-Type": "text/plain" });
+            res.end("Bad Host");
+            return;
+          }
           const pathname = (req.url || "/").split("?")[0];
           if (req.method === "GET" && pathname === "/ping") {
             res.writeHead(200, {
@@ -4140,7 +4285,7 @@ var BridgeWSServer = class {
           }
           if (req.method === "POST" && req.url === "/shutdown") {
             const tokenHeader = req.headers["x-bridge-token"];
-            if (tokenHeader === this.pairingToken) {
+            if (safeEqual(this.pairingToken, tokenHeader)) {
               this.logger.info("[WS] Received takeover shutdown request with valid token. Exiting gracefully...");
               res.writeHead(200, { "Content-Type": "application/json" });
               res.end(JSON.stringify({ status: "shutting_down" }));
@@ -4161,19 +4306,21 @@ var BridgeWSServer = class {
           res.writeHead(404);
           res.end();
         });
-        this.httpServer.requestTimeout = 0;
+        this.httpServer.headersTimeout = 15e3;
+        this.httpServer.requestTimeout = 3e4;
         this.httpServer.timeout = 0;
         this.wss = new import_websocket_server.default({
           server: this.httpServer,
           maxPayload: 60 * 1024 * 1024,
           verifyClient: (info, callback) => {
+            if (!this.isLocalHost(info.req.headers.host)) {
+              this.logger.warn(`[WS] Rejected connection with invalid host: ${info.req.headers.host}`);
+              callback(false, 421, "Bad Host");
+              return;
+            }
             const origin = info.origin || "";
             const allowed = getAllowedOrigins();
             if (origin && !allowed.has(origin)) {
-              if (process.env.NODE_ENV === "test" && origin.startsWith("chrome-extension://")) {
-                callback(true);
-                return;
-              }
               this.logger.warn(`[WS] Rejected connection from unauthorized origin: ${origin}`);
               callback(false, 403, "Forbidden Origin");
               return;
@@ -4199,10 +4346,7 @@ var BridgeWSServer = class {
               const data = JSON.parse(raw.toString("utf-8"));
               if (!authenticated) {
                 if (data.type === "auth") {
-                  const allowed = getAllowedOrigins();
-                  const isAutoPaired = Boolean(clientOrigin && allowed.has(clientOrigin));
-                  const isTokenMatch = Boolean(this.pairingToken && data.token === this.pairingToken);
-                  if (isAutoPaired || isTokenMatch) {
+                  if (safeEqual(this.pairingToken, data.token)) {
                     authenticated = true;
                     clearTimeout(authTimeout);
                     if (this.activeSocket && this.activeSocket !== ws && this.activeSocket.readyState === import_websocket.default.OPEN) {
@@ -4215,17 +4359,13 @@ var BridgeWSServer = class {
                     this.activeSocket = ws;
                     this.isStopped = false;
                     this.extensionVersion = typeof data.extensionVersion === "string" ? data.extensionVersion : "";
-                    if (isAutoPaired) {
-                      this.logger.info(`[WS] Client automatically paired via trusted origin (${clientOrigin}, extension ${this.extensionVersion || "unknown"}, bridge ${BRIDGE_VERSION}).`);
-                    } else {
-                      this.logger.info(`[WS] Client paired and authenticated with token (extension ${this.extensionVersion || "unknown"}, bridge ${BRIDGE_VERSION}).`);
-                    }
+                    this.logger.info(`[WS] Client paired and authenticated with token (extension ${this.extensionVersion || "unknown"}, bridge ${BRIDGE_VERSION}).`);
                     this.send(ws, { type: "auth_ok", listening: this.isListeningCurrently, bridgeVersion: BRIDGE_VERSION });
                     this.lastStatusJson = "";
                     this.broadcastStatus();
                   } else {
-                    this.logger.warn(`[WS] Authentication failed: origin '${clientOrigin}' is not auto-paired and token invalid.`);
-                    this.send(ws, { type: "auth_error", error: "Invalid pairing token" });
+                    this.logger.warn(`[WS] Authentication failed: origin '${clientOrigin}' invalid token.`);
+                    this.send(ws, { type: "auth_error", error: "Invalid pairing token", code: "invalid_token" });
                     ws.close(4003, "Invalid token");
                   }
                 } else {
@@ -4321,7 +4461,9 @@ var BridgeWSServer = class {
             const saved = await saveAttachment(msgId, i + 1, a);
             savedAttachments.push(saved);
           } catch (err) {
-            this.logger.error(`[Uploads] Failed to save attachment "${a.name}": ${err instanceof Error ? err.message : String(err)}`);
+            const reason = err instanceof Error ? err.message : String(err);
+            this.logger.error(`[Uploads] Failed to save attachment "${a.name}": ${reason}`);
+            this.broadcast({ type: "system_note", code: "attachment_rejected", text: reason });
           }
         }
       }
@@ -4354,6 +4496,17 @@ var BridgeWSServer = class {
       }
       return;
     }
+    if (msg.type === "command_hold") {
+      if (typeof msg.holdMs === "number" && Number.isFinite(msg.holdMs) && msg.holdMs > 0) {
+        const pending = this.pendingCommands.get(msg.correlationId);
+        if (pending && pending.onTimeout) {
+          clearTimeout(pending.timer);
+          const effectiveHoldMs = Math.min(msg.holdMs, 3e5);
+          pending.timer = setTimeout(pending.onTimeout, effectiveHoldMs);
+        }
+      }
+      return;
+    }
     if (msg.type === "ui_language") {
       const lang = msg.lang === "en" ? "en" : "ar";
       if (lang !== this.userUiLanguage) {
@@ -4381,6 +4534,18 @@ var BridgeWSServer = class {
       if (this.activeSocket) {
         this.send(this.activeSocket, { type: "bridge_log", lines });
       }
+      return;
+    }
+    if (msg.type === "reset_link") {
+      this.linkedConversationId = null;
+      this.linkedAt = null;
+      this.lastUsedAt = null;
+      this.linkPendingSince = 0;
+      this.defaultConversationAttempts = 0;
+      this.lastDefaultConversationFailureAt = 0;
+      this.saveSessionState(true);
+      this.logger.info("[Session] Reset conversation link.");
+      this.broadcastStatus();
       return;
     }
     if (msg.type === "user_action") {
@@ -4446,6 +4611,20 @@ var BridgeWSServer = class {
       const data = JSON.parse(fs3.readFileSync(file, "utf-8"));
       if (typeof data.linkedConversationId === "string" && UUID_RE.test(data.linkedConversationId)) {
         this.linkedConversationId = data.linkedConversationId;
+        this.linkedAt = typeof data.linkedAt === "number" ? data.linkedAt : null;
+        this.lastUsedAt = typeof data.lastUsedAt === "number" ? data.lastUsedAt : null;
+        if (this.isLinkExpired()) {
+          const oldId = this.linkedConversationId;
+          const lastActive = Math.max(this.lastUsedAt ?? 0, this.linkedAt ?? 0);
+          const now = Date.now();
+          const diffHours = lastActive > 0 ? (now - lastActive) / 36e5 : this.linkTtlHours;
+          const hours = diffHours >= 1 ? Math.round(diffHours) : Number(diffHours.toFixed(1));
+          this.linkedConversationId = null;
+          this.linkedAt = null;
+          this.lastUsedAt = null;
+          this.saveSessionState(true);
+          this.logger.info(`[Session] Dropped the old conversation link ${oldId.slice(0, 8)} (unused for ${hours} hours).`);
+        }
       }
       this.setupDone = Boolean(data.setupDone);
       this.hooksSeenAt = typeof data.hooksSeenAt === "number" ? data.hooksSeenAt : 0;
@@ -4456,9 +4635,14 @@ var BridgeWSServer = class {
       this.logger.warn(`[Session] Could not read .session.json: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  saveSessionState() {
+  saveSessionState(force = false) {
     const file = this.sessionFile();
     if (!file) return;
+    if (this.lastUsedAtSaveTimer) {
+      clearTimeout(this.lastUsedAtSaveTimer);
+      this.lastUsedAtSaveTimer = null;
+    }
+    this.lastSessionWriteAt = Date.now();
     try {
       let current = {};
       if (fs3.existsSync(file)) {
@@ -4470,12 +4654,63 @@ var BridgeWSServer = class {
       const next = {
         ...current,
         linkedConversationId: this.linkedConversationId,
+        linkedAt: this.linkedAt,
+        lastUsedAt: this.lastUsedAt,
         hooksSeenAt: this.hooksSeenAt
       };
       fs3.writeFileSync(file, JSON.stringify(next, null, 2), "utf-8");
     } catch (err) {
       this.logger.warn(`[Session] Could not write .session.json: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+  isLinkExpired() {
+    if (!this.linkedConversationId) return false;
+    const lastActive = Math.max(this.lastUsedAt ?? 0, this.linkedAt ?? 0);
+    if (!lastActive) return true;
+    const ttlMs = this.linkTtlHours * 3600 * 1e3;
+    return Date.now() - lastActive > ttlMs;
+  }
+  dropExpiredLink() {
+    if (!this.linkedConversationId) return;
+    const oldId = this.linkedConversationId;
+    const lastActive = Math.max(this.lastUsedAt ?? 0, this.linkedAt ?? 0);
+    const now = Date.now();
+    const diffHours = lastActive > 0 ? (now - lastActive) / 36e5 : this.linkTtlHours;
+    const hours = diffHours >= 1 ? Math.round(diffHours) : Number(diffHours.toFixed(1));
+    this.linkedConversationId = null;
+    this.linkedAt = null;
+    this.lastUsedAt = null;
+    this.linkPendingSince = 0;
+    this.defaultConversationAttempts = 0;
+    this.lastDefaultConversationFailureAt = 0;
+    this.saveSessionState(true);
+    this.logger.info(`[Session] Dropped the old conversation link ${oldId.slice(0, 8)} (unused for ${hours} hours).`);
+    this.broadcastStatus();
+  }
+  touchLinkUsage() {
+    if (!this.linkedConversationId) return;
+    this.lastUsedAt = Date.now();
+    const now = Date.now();
+    if (now - this.lastSessionWriteAt >= 6e4) {
+      if (this.lastUsedAtSaveTimer) {
+        clearTimeout(this.lastUsedAtSaveTimer);
+        this.lastUsedAtSaveTimer = null;
+      }
+      this.saveSessionState();
+    } else if (!this.lastUsedAtSaveTimer) {
+      const delay = Math.max(100, 6e4 - (now - this.lastSessionWriteAt));
+      this.lastUsedAtSaveTimer = setTimeout(() => {
+        this.lastUsedAtSaveTimer = null;
+        this.saveSessionState();
+      }, delay);
+      this.lastUsedAtSaveTimer.unref?.();
+    }
+  }
+  getLastUsedAt() {
+    return this.lastUsedAt;
+  }
+  getLinkedAt() {
+    return this.linkedAt;
   }
   // ==========================================================
   // Agent status (what the side panel shows in the status chip)
@@ -4499,6 +4734,8 @@ var BridgeWSServer = class {
     return {
       version: BRIDGE_VERSION,
       linked: Boolean(this.linkedConversationId),
+      linkedId: this.linkedConversationId ? this.linkedConversationId.slice(0, 8) : null,
+      linkedAt: this.linkedConversationId ? this.linkedAt : null,
       linkPending: this.isLinkPending(),
       waker: this.isWakerOnline(),
       hooks: this.hooksConfirmed(),
@@ -4566,9 +4803,24 @@ var BridgeWSServer = class {
       this.broadcastStatus();
       return;
     }
+    if (this.linkedConversationId && this.isLinkExpired()) {
+      this.dropExpiredLink();
+    }
     if (this.linkedConversationId && this.isWakerOnline()) {
       void this.dispatchWake();
       return;
+    }
+    if (!this.linkedConversationId && !this.isLinkPending() && this.isWakerOnline()) {
+      if (this.defaultConversationInFlight) {
+        this.broadcast({ type: "system_note", code: "queued_asleep" });
+        this.broadcastStatus();
+        return;
+      }
+      if (this.defaultConversationAttempts < 3 && Date.now() - this.lastDefaultConversationFailureAt >= this.defaultConversationBackoffMs) {
+        this.broadcast({ type: "system_note", code: "queued_asleep" });
+        void this.createDefaultConversation();
+        return;
+      }
     }
     const code = this.linkedConversationId || this.isLinkPending() ? "queued_asleep" : "queued_not_linked";
     this.logger.warn(`[Route] No wake channel. Message #${userMsg.messageId} queued (${code}).`);
@@ -4744,6 +4996,7 @@ var BridgeWSServer = class {
     if (includeLanguageNote) this.pendingLanguageNote = null;
     if (!this.turnActive || this.messageQueue.length === 0) return langNote;
     const msgs = this.messageQueue.splice(0);
+    this.touchLinkUsage();
     this.deliverMessages(msgs);
     this.logger.info(`[Route] Delivered ${msgs.length} queued message(s) inside a tool result.`);
     return (langNote ? langNote + "\n\n" : "") + this.formatMessagesForAgent(
@@ -4787,6 +5040,12 @@ var BridgeWSServer = class {
   isExtensionConnected() {
     return Boolean(this.activeSocket && this.activeSocket.readyState === import_websocket.default.OPEN);
   }
+  isLocalHost(hostHeader) {
+    if (!hostHeader) return false;
+    const h = hostHeader.trim().toLowerCase();
+    const portStr = String(this.port);
+    return h === `127.0.0.1:${portStr}` || h === `localhost:${portStr}`;
+  }
   /**
    * Make sure the Chrome extension is connected. If it is not, open Chrome at the /connect page:
    * this starts Chrome when it is closed and wakes the extension when it is asleep.
@@ -4816,6 +5075,7 @@ var BridgeWSServer = class {
   }
   connectPanel(conversationId) {
     this.linkPendingSince = Date.now();
+    this.defaultConversationAttempts = 0;
     if (conversationId && UUID_RE.test(conversationId)) {
       this.setLinkedConversation(conversationId, "connect_side_panel");
     }
@@ -4838,10 +5098,76 @@ var BridgeWSServer = class {
   setLinkedConversation(conversationId, source) {
     if (this.linkedConversationId === conversationId) return;
     this.linkedConversationId = conversationId;
-    this.logger.info(`[Session] Linked to Antigravity conversation ${conversationId} (via ${source}).`);
-    this.saveSessionState();
+    const now = Date.now();
+    this.linkedAt = now;
+    this.lastUsedAt = now;
+    if (source !== "default conversation") {
+      this.defaultConversationAttempts = 0;
+    }
+    this.logger.info(`[Session] Linked to Antigravity conversation ${conversationId.slice(0, 8)} (via ${source}).`);
+    this.saveSessionState(true);
     this.broadcast({ type: "system_note", code: "linked" });
     this.broadcastStatus();
+  }
+  // ==========================================================
+  // Default conversation creation (when nothing is linked)
+  // ==========================================================
+  async createDefaultConversation() {
+    if (this.defaultConversationInFlight || this.linkedConversationId || this.isLinkPending()) return;
+    if (this.defaultConversationAttempts >= 3) return;
+    if (Date.now() - this.lastDefaultConversationFailureAt < this.defaultConversationBackoffMs) return;
+    const msgs = this.messageQueue.splice(0);
+    if (msgs.length === 0) return;
+    this.defaultConversationInFlight = true;
+    const last = msgs[msgs.length - 1];
+    if (last.tab?.id) this.activeTabId = last.tab.id;
+    this.userUiLanguage = last.ui_language || this.userUiLanguage;
+    const wakingLabel = this.userUiLanguage === "ar" ? "\u0628\u064A\u0635\u062D\u0651\u064A Antigravity..." : "Waking Antigravity...";
+    this.broadcastTaskState("thinking", this.activeTabId, wakingLabel);
+    if (this.linkedConversationId || this.isLinkPending()) {
+      this.defaultConversationInFlight = false;
+      this.messageQueue.unshift(...msgs);
+      this.broadcastTaskState("idle", this.activeTabId);
+      this.broadcastStatus();
+      return;
+    }
+    const job = {
+      jobId: `newconv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      kind: "new_conversation",
+      title: "MyChrome",
+      prompt: this.formatMessagesForAgent(msgs),
+      safePrompt: "New message from the user in the Chrome side panel. Call read_panel_messages to read it, then handle it with the browser tools and reply_to_user.",
+      projectId: this.defaultProjectId
+    };
+    this.logger.info(`[DefaultConversation] Queuing default conversation creation for ${msgs.length} message(s) through the waker.`);
+    const result = await this.enqueueWakeJob(job, 65e3);
+    this.defaultConversationInFlight = false;
+    if (this.linkedConversationId || this.isLinkPending()) {
+      this.logger.info(
+        `[DefaultConversation] Link appeared while creation was in flight; discarding new conversation ${result.conversationId ? result.conversationId.slice(0, 8) : "none"}.`
+      );
+      this.messageQueue.unshift(...msgs);
+      if (this.linkedConversationId && this.isWakerOnline()) {
+        void this.dispatchWake();
+      }
+      this.broadcastStatus();
+      return;
+    }
+    if (result.ok && result.conversationId && UUID_RE.test(result.conversationId)) {
+      this.defaultConversationAttempts = 0;
+      this.setLinkedConversation(result.conversationId, "default conversation");
+      this.logger.info(`[DefaultConversation] Created default conversation ${result.conversationId.slice(0, 8)}.`);
+      this.deliverMessages(msgs);
+      this.broadcastStatus();
+    } else {
+      this.defaultConversationAttempts += 1;
+      this.lastDefaultConversationFailureAt = Date.now();
+      this.logger.warn(`[DefaultConversation] Failed: ${result.error || "invalid conversationId"}`);
+      this.messageQueue.unshift(...msgs);
+      this.broadcast({ type: "system_note", code: "queued_not_linked" });
+      this.broadcastTaskState("idle", this.activeTabId);
+      this.broadcastStatus();
+    }
   }
   // ==========================================================
   // Wake-up through the sidecar (agentapi send-message)
@@ -4863,11 +5189,12 @@ var BridgeWSServer = class {
       prompt: this.formatMessagesForAgent(msgs),
       safePrompt: "New message from the user in the Chrome side panel. Call read_panel_messages to read it, then handle it with the browser tools and reply_to_user."
     };
-    this.logger.info(`[Wake] Sending ${msgs.length} message(s) to conversation ${job.conversationId} through the waker.`);
+    this.logger.info(`[Wake] Sending ${msgs.length} message(s) to conversation ${job.conversationId.slice(0, 8)} through the waker.`);
     const result = await this.enqueueWakeJob(job, 25e3);
     this.wakeInFlight = false;
     if (result.ok) {
       this.logger.info(`[Wake] Delivered${result.usedSafePrompt ? " (safe prompt)" : ""}.`);
+      this.touchLinkUsage();
       this.deliverMessages(msgs);
     } else {
       this.logger.error(`[Wake] Failed: ${result.error || "unknown error"}`);
@@ -4904,7 +5231,7 @@ var BridgeWSServer = class {
   // HTTP control endpoints (Stop hook, waker, status)
   // ==========================================================
   async handleControlRequest(pathname, req, res) {
-    if (req.headers["x-bridge-token"] !== this.pairingToken) {
+    if (!safeEqual(this.pairingToken, req.headers["x-bridge-token"])) {
       this.logger.warn(`[HTTP] Rejected ${pathname}: bad or missing token.`);
       this.sendJson(res, 403, { decision: "stop", error: "forbidden" });
       return;
@@ -4913,6 +5240,7 @@ var BridgeWSServer = class {
       this.sendJson(res, 200, {
         ...this.getAgentStatus(),
         linkedConversationId: this.linkedConversationId,
+        lastUsedAt: this.lastUsedAt || null,
         extensionConnected: Boolean(this.activeSocket && this.activeSocket.readyState === import_websocket.default.OPEN),
         extensionVersion: this.extensionVersion || null,
         hooksSeenAt: this.hooksSeenAt || null,
@@ -4951,13 +5279,35 @@ var BridgeWSServer = class {
     if (req.method === "POST" && pathname === "/waker/result") {
       const body = await this.readJsonBody(req);
       const pending = body.jobId ? this.pendingWakeJobs.get(body.jobId) : void 0;
+      let validCid;
+      let cidInvalid = false;
+      if (body.conversationId !== void 0) {
+        if (typeof body.conversationId === "string" && UUID_RE.test(body.conversationId)) {
+          validCid = body.conversationId;
+        } else {
+          cidInvalid = true;
+        }
+      }
       if (pending && body.jobId) {
         clearTimeout(pending.timer);
         this.pendingWakeJobs.delete(body.jobId);
-        pending.resolve({ ok: Boolean(body.ok), error: body.error, usedSafePrompt: Boolean(body.usedSafePrompt) });
+        if (cidInvalid) {
+          pending.resolve({ ok: false, error: "Invalid conversationId in waker result" });
+        } else {
+          pending.resolve({
+            ok: Boolean(body.ok),
+            error: body.error,
+            usedSafePrompt: Boolean(body.usedSafePrompt),
+            conversationId: validCid
+          });
+        }
       }
       this.wakerLastSeen = Date.now();
-      this.sendJson(res, 200, { ok: true });
+      if (cidInvalid) {
+        this.sendJson(res, 400, { ok: false, error: "Invalid conversationId" });
+      } else {
+        this.sendJson(res, 200, { ok: true });
+      }
       return;
     }
     this.sendJson(res, 404, { error: "not found" });
@@ -4991,9 +5341,15 @@ var BridgeWSServer = class {
       this.wakerWaiters = this.wakerWaiters.filter((w) => w !== waiter);
     });
     this.broadcastStatus();
-    if (!wasOnline && this.messageQueue.length > 0 && this.linkedConversationId && !this.turnActive && !this.heldStop) {
-      this.logger.info(`[Waker] Delivering ${this.messageQueue.length} message(s) that were waiting.`);
-      void this.dispatchWake();
+    if (!wasOnline && this.messageQueue.length > 0 && !this.turnActive && !this.heldStop) {
+      if (this.linkedConversationId) {
+        this.logger.info(`[Waker] Delivering ${this.messageQueue.length} message(s) that were waiting.`);
+        void this.dispatchWake();
+      } else if (!this.isLinkPending() && !this.defaultConversationInFlight && this.defaultConversationAttempts < 3 && Date.now() - this.lastDefaultConversationFailureAt >= this.defaultConversationBackoffMs) {
+        this.logger.info(`[Waker] Delivering ${this.messageQueue.length} message(s) by creating default conversation.`);
+        this.broadcast({ type: "system_note", code: "queued_asleep" });
+        void this.createDefaultConversation();
+      }
     }
   }
   /**
@@ -5030,6 +5386,7 @@ var BridgeWSServer = class {
     if (!cid || cid !== this.linkedConversationId) {
       return { decision: "stop" };
     }
+    this.touchLinkUsage();
     this.logger.info(`[Hook] Stop for linked conversation (reason: ${terminationReason || "n/a"}).`);
     const normalStop = !terminationReason || terminationReason === "model_stop";
     if (normalStop && this.turnActive && this.turnHadUserMessage && !this.turnFinalSent && !this.turnNudged && !this.turnStoppedByUser) {
@@ -5039,6 +5396,7 @@ var BridgeWSServer = class {
     }
     if (normalStop && this.messageQueue.length > 0) {
       const msgs = this.messageQueue.splice(0);
+      this.touchLinkUsage();
       this.deliverMessages(msgs);
       this.logger.info(`[Hook] Continuing the turn with ${msgs.length} queued message(s).`);
       return { decision: "continue", reason: this.formatMessagesForAgent(msgs) };
@@ -5355,6 +5713,13 @@ var BridgeWSServer = class {
         "stopped_by_user: the user pressed Stop in the side panel. Do not call more browser tools. Send one short reply_to_user(kind='final') and end your turn."
       );
     }
+    if (tool === "upload_file") {
+      const resolved = resolveUploadPaths(params.paths);
+      if (!resolved.ok) {
+        throw new Error(resolved.error);
+      }
+      params = { ...params, paths: resolved.paths };
+    }
     if (!this.isExtensionConnected()) {
       const r = await this.ensureExtension(15e3);
       if (!r.connected) {
@@ -5394,7 +5759,8 @@ var BridgeWSServer = class {
       }
     };
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      let pendingRecord;
+      const onTimeout = () => {
         this.pendingCommands.delete(correlationId);
         this.turnErrors += 1;
         this.broadcastActivity({
@@ -5410,9 +5776,11 @@ var BridgeWSServer = class {
         });
         afterCommand();
         reject(new Error(`Command ${tool} timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-      this.pendingCommands.set(correlationId, {
+      };
+      const timer = setTimeout(onTimeout, timeoutMs);
+      pendingRecord = {
         resolve: (result) => {
+          clearTimeout(pendingRecord.timer);
           this.broadcastActivity({
             id: eventId,
             correlationId,
@@ -5429,6 +5797,7 @@ var BridgeWSServer = class {
           resolve(result);
         },
         reject: (err) => {
+          clearTimeout(pendingRecord.timer);
           this.turnErrors += 1;
           this.broadcastActivity({
             id: eventId,
@@ -5444,8 +5813,10 @@ var BridgeWSServer = class {
           afterCommand();
           reject(err);
         },
-        timer
-      });
+        timer,
+        onTimeout
+      };
+      this.pendingCommands.set(correlationId, pendingRecord);
       this.send(this.activeSocket, {
         type: "browser_command",
         correlationId,
@@ -5457,6 +5828,8 @@ var BridgeWSServer = class {
   async stop() {
     if (this.listeningTimer) clearTimeout(this.listeningTimer);
     if (this.taskStateTimer) clearTimeout(this.taskStateTimer);
+    if (this.lastUsedAtSaveTimer) clearTimeout(this.lastUsedAtSaveTimer);
+    this.lastUsedAtSaveTimer = null;
     if (this.statusTicker) clearInterval(this.statusTicker);
     this.statusTicker = null;
     if (this.turnSafetyTimer) clearTimeout(this.turnSafetyTimer);

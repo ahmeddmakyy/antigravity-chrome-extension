@@ -93,6 +93,8 @@ export interface AgentStatus {
   busy: boolean;
   mode: WakeMode;
   queued: number;
+  linkedId?: string | null;
+  linkedAt?: number | null;
 }
 
 export type WSClientMessage =
@@ -100,15 +102,17 @@ export type WSClientMessage =
   | { type: "chat_message"; text: string; tab: TabInfo; screenshot?: string; attachments?: FileAttachment[]; ui_language?: string; clientMsgId?: string }
   | { type: "command_result"; correlationId: string; success: boolean; result?: unknown; error?: string }
   | { type: "browser_command_result"; correlationId: string; result?: unknown; error?: string }
+  | { type: "command_hold"; correlationId: string; holdMs: number }
   | { type: "user_action"; action: "stop" | "approve" | "deny" | "answer"; correlationId?: string; value?: unknown }
   | { type: "client_event"; name: string; data?: Record<string, unknown> }
   | { type: "ui_language"; lang: string }
   | { type: "get_bridge_log" }
+  | { type: "reset_link" }
   | { type: "ping" };
 
 export type WSServerMessage =
   | { type: "auth_ok"; listening: boolean; bridgeVersion?: string }
-  | { type: "auth_error"; error: string }
+  | { type: "auth_error"; error: string; code?: string }
   | { type: "listening_state"; listening: boolean }
   | { type: "agent_reply"; text: string; kind: "progress" | "final"; replyId: string; turnId?: string }
   | { type: "turn_started"; turnId: string; fromUser: boolean; startedAt: number }

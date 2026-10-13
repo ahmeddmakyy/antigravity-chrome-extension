@@ -3721,7 +3721,7 @@ var require_websocket_server = __commonJS({
 // src/remote-bridge.ts
 import http from "http";
 import fs2 from "fs";
-import path2 from "path";
+import path3 from "path";
 import { spawn } from "child_process";
 
 // node_modules/ws/wrapper.mjs
@@ -3733,6 +3733,10 @@ var import_sender = __toESM(require_sender(), 1);
 var import_subprotocol = __toESM(require_subprotocol(), 1);
 var import_websocket = __toESM(require_websocket(), 1);
 var import_websocket_server = __toESM(require_websocket_server(), 1);
+
+// src/ws-server.ts
+import path2 from "path";
+import { fileURLToPath } from "url";
 
 // src/constants.ts
 var EXTENSION_ID = "aeofpcedejopeeebdjfkapcabkkflhej";
@@ -3770,6 +3774,8 @@ function getTokenPath(fallbackDir) {
 var MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 // src/ws-server.ts
+var __filename = fileURLToPath(import.meta.url);
+var __dirname = path2.dirname(__filename);
 function fromWire(value) {
   return JSON.parse(JSON.stringify(value), (_k, v) => v && typeof v === "object" && Array.isArray(v.__map) ? new Map(v.__map) : v);
 }
@@ -3799,7 +3805,7 @@ function pingHelper(port, timeoutMs = 1500) {
 }
 async function ensureHelper(port, distDir, logger) {
   if (await pingHelper(port)) return true;
-  const daemon = path2.join(distDir, "daemon.js");
+  const daemon = path3.join(distDir, "daemon.js");
   if (!fs2.existsSync(daemon)) {
     logger.error(`[MCP] Helper not running and ${daemon} is missing.`);
     return false;

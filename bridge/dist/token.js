@@ -60,6 +60,72 @@ function getOrCreatePairingToken(baseDir) {
   }
   return { token: newToken, isNew: true };
 }
+function safeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length === 0 || b.length === 0) {
+    return false;
+  }
+  const hashA = crypto.createHash("sha256").update(a).digest();
+  const hashB = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(hashA, hashB);
+}
+function writeExtensionKey(extensionDir, token) {
+  let targetPath = "";
+  let tmpPath = null;
+  try {
+    if (!extensionDir || typeof extensionDir !== "string") {
+      return { ok: false, path: "", error: "Invalid extension directory" };
+    }
+    targetPath = path2.join(extensionDir, "pairing.json");
+    if (!fs2.existsSync(extensionDir)) {
+      return { ok: false, path: targetPath, error: "Extension directory does not exist" };
+    }
+    const stat = fs2.statSync(extensionDir);
+    if (!stat.isDirectory()) {
+      return { ok: false, path: targetPath, error: "Extension path is not a directory" };
+    }
+    if (fs2.existsSync(targetPath)) {
+      try {
+        const raw = fs2.readFileSync(targetPath, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && parsed.token === token) {
+          return { ok: true, path: targetPath };
+        }
+      } catch {
+      }
+    }
+    const tmpName = `.pairing.json.tmp.${Date.now()}.${crypto.randomBytes(4).toString("hex")}`;
+    tmpPath = path2.join(extensionDir, tmpName);
+    const content = JSON.stringify({ token }) + "\n";
+    fs2.writeFileSync(tmpPath, content, { encoding: "utf-8", mode: 384 });
+    try {
+      fs2.chmodSync(tmpPath, 384);
+    } catch {
+    }
+    fs2.renameSync(tmpPath, targetPath);
+    try {
+      fs2.chmodSync(targetPath, 384);
+    } catch {
+    }
+    tmpPath = null;
+    return { ok: true, path: targetPath };
+  } catch (err) {
+    if (tmpPath) {
+      try {
+        if (fs2.existsSync(tmpPath)) {
+          fs2.unlinkSync(tmpPath);
+        }
+      } catch {
+      }
+    }
+    return {
+      ok: false,
+      path: targetPath,
+      error: err instanceof Error ? err.message : String(err)
+    };
+  }
+}
 export {
-  getOrCreatePairingToken
+  getOrCreatePairingToken,
+  safeEqual,
+  writeExtensionKey
 };

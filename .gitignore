@@ -12,6 +12,7 @@ package-lock.json.backup
 *.priv
 .env
 .env.*
+extension/pairing.json
 
 # Logs
 logs/

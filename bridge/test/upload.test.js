@@ -1,8 +1,8 @@
+import { TEST_ROOT } from "./setup.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "fs";
 import path from "path";
-import os from "os";
 import {
   sanitizeFileName,
   validateAttachment,
@@ -12,7 +12,7 @@ import {
 } from "../dist/upload-manager.js";
 
 test("Upload Manager - Unit & Integration Tests", async (t) => {
-  const tmpDir = path.join(os.tmpdir(), `mychrome-test-uploads-${Date.now()}`);
+  const tmpDir = path.join(TEST_ROOT, `mychrome-test-uploads-${Date.now()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
 
   t.after(() => {
@@ -82,6 +82,17 @@ test("Upload Manager - Unit & Integration Tests", async (t) => {
     const typeRes = validateAttachment(invalidType);
     assert.equal(typeRes.valid, false);
     assert.match(typeRes.error, /not supported/);
+
+    // Stricter check: .exe with text/plain is rejected
+    const evilExe = {
+      name: "evil.exe",
+      mime: "text/plain",
+      size: 500,
+      data: "abc",
+    };
+    const evilRes = validateAttachment(evilExe);
+    assert.equal(evilRes.valid, false);
+    assert.match(evilRes.error, /not supported/);
   });
 
   await t.test("Saving attachment and returning content", async () => {
@@ -98,6 +109,7 @@ test("Upload Manager - Unit & Integration Tests", async (t) => {
     assert.equal(saved.name, "test-pixel.png");
     assert.equal(saved.isImage, true);
     assert.ok(saved.path.includes("test-pixel.png"));
+    assert.match(path.basename(saved.path), /^[0-9a-f]{6}-101-0-test-pixel\.png$/);
     assert.ok(fs.existsSync(saved.path));
     assert.ok(saved.dataUrl?.startsWith("data:image/png;base64,"));
 

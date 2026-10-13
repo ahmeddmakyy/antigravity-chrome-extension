@@ -8,7 +8,7 @@
  */
 import path from "path";
 import { fileURLToPath } from "url";
-import { getOrCreatePairingToken } from "./token.js";
+import { getOrCreatePairingToken, writeExtensionKey } from "./token.js";
 import { Logger } from "./logger.js";
 import { BridgeWSServer } from "./ws-server.js";
 import { BRIDGE_VERSION } from "./version.js";
@@ -26,10 +26,19 @@ async function main(): Promise<void> {
   logger.info(`Starting MyChrome helper v${BRIDGE_VERSION} (started by ${startedBy}, node ${process.version}, ${process.platform}).`);
 
   const { token } = getOrCreatePairingToken(stateDir);
+  const extensionDir = process.env.MYCHROME_EXTENSION_DIR || path.resolve(BRIDGE_ROOT, "..", "extension");
+  const keyResult = writeExtensionKey(extensionDir, token);
+  if (keyResult.ok) {
+    logger.info(`[Auth] Extension pairing key written to ${keyResult.path}.`);
+  } else {
+    logger.warn(`[Auth] Could not write extension pairing key: ${keyResult.error || "unknown error"}.`);
+  }
+
   const port = parseInt(process.env.BRIDGE_PORT || "8765", 10);
   const holdSeconds = parseInt(process.env.BRIDGE_HOLD_SECONDS || "1800", 10);
   const server = new BridgeWSServer(port, token, logger, {
     stateDir,
+    extensionDir,
     holdSeconds: Number.isFinite(holdSeconds) ? holdSeconds : 1800,
   });
   await server.start();

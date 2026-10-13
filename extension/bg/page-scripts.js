@@ -278,15 +278,821 @@ export const scrollToRefScript = (ref) => {
   return true;
 };
 
+export const describeRefScript = (ref) => {
+  const el = document.querySelector(`[data-antigravity-ref="${ref}"]`);
+  if (!el) {
+    return {
+      found: false,
+      name: "",
+      role: "",
+      tag: "",
+      type: "",
+      href: "",
+      isSubmit: false,
+      isSensitiveField: false,
+      inForm: false,
+      formSubmitName: "",
+      formHasSensitive: false,
+    };
+  }
+  let name = "";
+  const ariaLabel = (el.getAttribute("aria-label") || "").trim();
+  if (ariaLabel) {
+    name = ariaLabel;
+  } else {
+    const labelledBy = (el.getAttribute("aria-labelledby") || "").trim();
+    if (labelledBy) {
+      const ids = labelledBy.split(/\s+/).filter(Boolean);
+      const text = ids
+        .map((id) => (document.getElementById(id)?.innerText || document.getElementById(id)?.textContent || "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      if (text) name = text;
+    }
+  }
+  if (!name) {
+    const it = (el.innerText || el.textContent || "").trim();
+    if (it) name = it.slice(0, 80);
+  }
+  const tag = (el.tagName || "").toLowerCase();
+  const attrType = (el.getAttribute("type") || "").toLowerCase();
+  const domType = (el.type || "").toLowerCase();
+  if (!name && (tag === "button" || tag === "input") && el.value && String(el.value).trim()) {
+    name = String(el.value).trim();
+  }
+  if (!name) {
+    const title = (el.getAttribute("title") || "").trim();
+    if (title) name = title;
+  }
+  if (!name) {
+    const ph = (el.getAttribute("placeholder") || "").trim();
+    if (ph) name = ph;
+  }
+  if (!name) {
+    const alt = (el.getAttribute("alt") || "").trim();
+    if (alt) name = alt;
+  }
+
+  const role = (el.getAttribute("role") || "").toLowerCase();
+  const type = attrType || domType || "";
+  const href = el.getAttribute("href") || el.href || "";
+
+  const form = el.closest ? el.closest("form") : null;
+  const inForm = Boolean(form);
+  let isSubmit = false;
+  if (tag === "button") {
+    if (attrType === "submit") isSubmit = true;
+    else if (!attrType && inForm) isSubmit = true;
+    else if (domType === "submit" && (inForm || attrType === "submit")) isSubmit = true;
+  } else if (tag === "input") {
+    if (domType === "submit" || domType === "image" || attrType === "submit" || attrType === "image") isSubmit = true;
+  } else if (role === "button") {
+    if (inForm && (attrType === "submit" || domType === "submit")) isSubmit = true;
+  }
+
+  function checkSensitive(target) {
+    if (!target) return false;
+    const dType = (target.type || "").toLowerCase();
+    const aType = (target.getAttribute("type") || "").toLowerCase();
+    if (dType === "password" || aType === "password") {
+      return true;
+    }
+    const auto = (target.getAttribute("autocomplete") || "").toLowerCase().trim();
+    const sensitiveAutos = [
+      "cc-number",
+      "cc-csc",
+      "cc-exp",
+      "cc-exp-month",
+      "cc-exp-year",
+      "cc-name",
+      "one-time-code",
+      "new-password",
+      "current-password",
+    ];
+    const autoTokens = auto.split(/\s+/);
+    if (sensitiveAutos.some((v) => autoTokens.includes(v) || auto.includes(v))) {
+      return true;
+    }
+    const elName = (target.getAttribute("name") || "").toLowerCase();
+    const elId = (target.id || target.getAttribute("id") || "").toLowerCase();
+    const elPh = (target.getAttribute("placeholder") || "").toLowerCase();
+    const textFields = `${elName} ${elId} ${elPh}`;
+    const normText = textFields.replace(/[-_]/g, " ").toLowerCase();
+    const englishMatch =
+      /\b(card\s*number|cvv|cvc|security\s*code|iban|otp|pin\s*code)\b/i.test(normText) ||
+      /cardnumber|pincode|securitycode/i.test(textFields);
+    if (englishMatch) {
+      return true;
+    }
+    const arNorm = textFields
+      .replace(/[\u064B-\u065F]/g, "")
+      .replace(/[إأآ]/g, "ا")
+      .replace(/ة/g, "ه");
+    const arabicMatch =
+      arNorm.includes("كلمه المرور") ||
+      arNorm.includes("كلمه السر") ||
+      arNorm.includes("باسورد") ||
+      arNorm.includes("باسوورد") ||
+      arNorm.includes("رقم البطاقه") ||
+      arNorm.includes("رقم الكارت") ||
+      arNorm.includes("الرقم السري") ||
+      arNorm.includes("رمز الامان");
+    return Boolean(arabicMatch);
+  }
+
+  const isSensitiveField = checkSensitive(el);
+
+  let formSubmitName = "";
+  let formHasSensitive = false;
+
+  if (form) {
+    const fields = form.querySelectorAll("input, select, textarea");
+    for (const f of fields) {
+      if (checkSensitive(f)) {
+        formHasSensitive = true;
+        break;
+      }
+    }
+
+    const candidates = form.querySelectorAll("button, input, [role='button']");
+    for (const btn of candidates) {
+      const bTag = (btn.tagName || "").toLowerCase();
+      const bAttrType = (btn.getAttribute("type") || "").toLowerCase();
+      const bDomType = (btn.type || "").toLowerCase();
+      const bRole = (btn.getAttribute("role") || "").toLowerCase();
+      let isSub = false;
+      if (bTag === "button") {
+        if (bAttrType === "submit") isSub = true;
+        else if (!bAttrType && bDomType !== "button" && bDomType !== "reset") isSub = true;
+        else if (bDomType === "submit") isSub = true;
+      } else if (bTag === "input") {
+        if (bDomType === "submit" || bDomType === "image" || bAttrType === "submit" || bAttrType === "image") isSub = true;
+      } else if (bRole === "button") {
+        if (bAttrType === "submit" || bDomType === "submit") isSub = true;
+      }
+      if (isSub) {
+        let bName = "";
+        const bAria = (btn.getAttribute("aria-label") || "").trim();
+        if (bAria) {
+          bName = bAria;
+        } else {
+          const bLabelled = (btn.getAttribute("aria-labelledby") || "").trim();
+          if (bLabelled) {
+            const ids = bLabelled.split(/\s+/).filter(Boolean);
+            const bDoc = btn.ownerDocument || document;
+            const text = ids
+              .map((id) => (bDoc.getElementById(id)?.innerText || bDoc.getElementById(id)?.textContent || "").trim())
+              .filter(Boolean)
+              .join(" ")
+              .trim();
+            if (text) bName = text;
+          }
+        }
+        if (!bName) {
+          const it = (btn.innerText || btn.textContent || "").trim();
+          if (it) bName = it.slice(0, 80);
+        }
+        if (!bName && (bTag === "button" || bTag === "input") && btn.value && String(btn.value).trim()) {
+          bName = String(btn.value).trim();
+        }
+        if (!bName) {
+          const title = (btn.getAttribute("title") || "").trim();
+          if (title) bName = title;
+        }
+        if (!bName) {
+          const ph = (btn.getAttribute("placeholder") || "").trim();
+          if (ph) bName = ph;
+        }
+        if (!bName) {
+          const alt = (btn.getAttribute("alt") || "").trim();
+          if (alt) bName = alt;
+        }
+        formSubmitName = (bName || "").slice(0, 80);
+        break;
+      }
+    }
+  }
+
+  return {
+    found: true,
+    name,
+    role,
+    tag,
+    type,
+    href,
+    isSubmit,
+    isSensitiveField,
+    inForm,
+    formSubmitName,
+    formHasSensitive,
+  };
+};
+
+// Same description as describeRefScript, for the element under a viewport coordinate (click and hover by x,y).
+export const describePointScript = (x, y) => {
+  const el = document.elementFromPoint(x, y);
+  if (!el) {
+    return {
+      found: false,
+      name: "",
+      role: "",
+      tag: "",
+      type: "",
+      href: "",
+      isSubmit: false,
+      isSensitiveField: false,
+      inForm: false,
+      formSubmitName: "",
+      formHasSensitive: false,
+    };
+  }
+  let name = "";
+  const ariaLabel = (el.getAttribute("aria-label") || "").trim();
+  if (ariaLabel) {
+    name = ariaLabel;
+  } else {
+    const labelledBy = (el.getAttribute("aria-labelledby") || "").trim();
+    if (labelledBy) {
+      const ids = labelledBy.split(/\s+/).filter(Boolean);
+      const text = ids
+        .map((id) => (document.getElementById(id)?.innerText || document.getElementById(id)?.textContent || "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      if (text) name = text;
+    }
+  }
+  if (!name) {
+    const it = (el.innerText || el.textContent || "").trim();
+    if (it) name = it.slice(0, 80);
+  }
+  const tag = (el.tagName || "").toLowerCase();
+  const attrType = (el.getAttribute("type") || "").toLowerCase();
+  const domType = (el.type || "").toLowerCase();
+  if (!name && (tag === "button" || tag === "input") && el.value && String(el.value).trim()) {
+    name = String(el.value).trim();
+  }
+  if (!name) {
+    const title = (el.getAttribute("title") || "").trim();
+    if (title) name = title;
+  }
+  if (!name) {
+    const ph = (el.getAttribute("placeholder") || "").trim();
+    if (ph) name = ph;
+  }
+  if (!name) {
+    const alt = (el.getAttribute("alt") || "").trim();
+    if (alt) name = alt;
+  }
+
+  const role = (el.getAttribute("role") || "").toLowerCase();
+  const type = attrType || domType || "";
+  const href = el.getAttribute("href") || el.href || "";
+
+  const form = el.closest ? el.closest("form") : null;
+  const inForm = Boolean(form);
+  let isSubmit = false;
+  if (tag === "button") {
+    if (attrType === "submit") isSubmit = true;
+    else if (!attrType && inForm) isSubmit = true;
+    else if (domType === "submit" && (inForm || attrType === "submit")) isSubmit = true;
+  } else if (tag === "input") {
+    if (domType === "submit" || domType === "image" || attrType === "submit" || attrType === "image") isSubmit = true;
+  } else if (role === "button") {
+    if (inForm && (attrType === "submit" || domType === "submit")) isSubmit = true;
+  }
+
+  function checkSensitive(target) {
+    if (!target) return false;
+    const dType = (target.type || "").toLowerCase();
+    const aType = (target.getAttribute("type") || "").toLowerCase();
+    if (dType === "password" || aType === "password") {
+      return true;
+    }
+    const auto = (target.getAttribute("autocomplete") || "").toLowerCase().trim();
+    const sensitiveAutos = [
+      "cc-number",
+      "cc-csc",
+      "cc-exp",
+      "cc-exp-month",
+      "cc-exp-year",
+      "cc-name",
+      "one-time-code",
+      "new-password",
+      "current-password",
+    ];
+    const autoTokens = auto.split(/\s+/);
+    if (sensitiveAutos.some((v) => autoTokens.includes(v) || auto.includes(v))) {
+      return true;
+    }
+    const elName = (target.getAttribute("name") || "").toLowerCase();
+    const elId = (target.id || target.getAttribute("id") || "").toLowerCase();
+    const elPh = (target.getAttribute("placeholder") || "").toLowerCase();
+    const textFields = `${elName} ${elId} ${elPh}`;
+    const normText = textFields.replace(/[-_]/g, " ").toLowerCase();
+    const englishMatch =
+      /\b(card\s*number|cvv|cvc|security\s*code|iban|otp|pin\s*code)\b/i.test(normText) ||
+      /cardnumber|pincode|securitycode/i.test(textFields);
+    if (englishMatch) {
+      return true;
+    }
+    const arNorm = textFields
+      .replace(/[\u064B-\u065F]/g, "")
+      .replace(/[إأآ]/g, "ا")
+      .replace(/ة/g, "ه");
+    const arabicMatch =
+      arNorm.includes("كلمه المرور") ||
+      arNorm.includes("كلمه السر") ||
+      arNorm.includes("باسورد") ||
+      arNorm.includes("باسوورد") ||
+      arNorm.includes("رقم البطاقه") ||
+      arNorm.includes("رقم الكارت") ||
+      arNorm.includes("الرقم السري") ||
+      arNorm.includes("رمز الامان");
+    return Boolean(arabicMatch);
+  }
+
+  const isSensitiveField = checkSensitive(el);
+
+  let formSubmitName = "";
+  let formHasSensitive = false;
+
+  if (form) {
+    const fields = form.querySelectorAll("input, select, textarea");
+    for (const f of fields) {
+      if (checkSensitive(f)) {
+        formHasSensitive = true;
+        break;
+      }
+    }
+
+    const candidates = form.querySelectorAll("button, input, [role='button']");
+    for (const btn of candidates) {
+      const bTag = (btn.tagName || "").toLowerCase();
+      const bAttrType = (btn.getAttribute("type") || "").toLowerCase();
+      const bDomType = (btn.type || "").toLowerCase();
+      const bRole = (btn.getAttribute("role") || "").toLowerCase();
+      let isSub = false;
+      if (bTag === "button") {
+        if (bAttrType === "submit") isSub = true;
+        else if (!bAttrType && bDomType !== "button" && bDomType !== "reset") isSub = true;
+        else if (bDomType === "submit") isSub = true;
+      } else if (bTag === "input") {
+        if (bDomType === "submit" || bDomType === "image" || bAttrType === "submit" || bAttrType === "image") isSub = true;
+      } else if (bRole === "button") {
+        if (bAttrType === "submit" || bDomType === "submit") isSub = true;
+      }
+      if (isSub) {
+        let bName = "";
+        const bAria = (btn.getAttribute("aria-label") || "").trim();
+        if (bAria) {
+          bName = bAria;
+        } else {
+          const bLabelled = (btn.getAttribute("aria-labelledby") || "").trim();
+          if (bLabelled) {
+            const ids = bLabelled.split(/\s+/).filter(Boolean);
+            const bDoc = btn.ownerDocument || document;
+            const text = ids
+              .map((id) => (bDoc.getElementById(id)?.innerText || bDoc.getElementById(id)?.textContent || "").trim())
+              .filter(Boolean)
+              .join(" ")
+              .trim();
+            if (text) bName = text;
+          }
+        }
+        if (!bName) {
+          const it = (btn.innerText || btn.textContent || "").trim();
+          if (it) bName = it.slice(0, 80);
+        }
+        if (!bName && (bTag === "button" || bTag === "input") && btn.value && String(btn.value).trim()) {
+          bName = String(btn.value).trim();
+        }
+        if (!bName) {
+          const title = (btn.getAttribute("title") || "").trim();
+          if (title) bName = title;
+        }
+        if (!bName) {
+          const ph = (btn.getAttribute("placeholder") || "").trim();
+          if (ph) bName = ph;
+        }
+        if (!bName) {
+          const alt = (btn.getAttribute("alt") || "").trim();
+          if (alt) bName = alt;
+        }
+        formSubmitName = (bName || "").slice(0, 80);
+        break;
+      }
+    }
+  }
+
+  return {
+    found: true,
+    name,
+    role,
+    tag,
+    type,
+    href,
+    isSubmit,
+    isSensitiveField,
+    inForm,
+    formSubmitName,
+    formHasSensitive,
+  };
+};
+
+export const activeElementScript = () => {
+  let el = document.activeElement;
+  if (!el || el === document.body || el === document.documentElement) {
+    return {
+      found: false,
+      name: "",
+      role: "",
+      tag: "",
+      type: "",
+      href: "",
+      isSubmit: false,
+      isSensitiveField: false,
+      inForm: false,
+      formSubmitName: "",
+      formHasSensitive: false,
+    };
+  }
+
+  let depth = 0;
+  while (depth < 4) {
+    const t = (el.tagName || "").toLowerCase();
+    if (t !== "iframe" && t !== "frame") {
+      break;
+    }
+    let nextDoc = null;
+    try {
+      nextDoc = el.contentDocument;
+    } catch {
+      return {
+        found: true,
+        name: "embedded frame",
+        role: "",
+        tag: "iframe",
+        type: "",
+        href: "",
+        isSubmit: false,
+        isSensitiveField: false,
+        inForm: false,
+        formSubmitName: "",
+        formHasSensitive: false,
+        uninspectable: true,
+      };
+    }
+    if (!nextDoc) {
+      return {
+        found: true,
+        name: "embedded frame",
+        role: "",
+        tag: "iframe",
+        type: "",
+        href: "",
+        isSubmit: false,
+        isSensitiveField: false,
+        inForm: false,
+        formSubmitName: "",
+        formHasSensitive: false,
+        uninspectable: true,
+      };
+    }
+    const innerActive = nextDoc.activeElement;
+    if (!innerActive || innerActive === nextDoc.body || innerActive === nextDoc.documentElement) {
+      el = innerActive || nextDoc.documentElement;
+      break;
+    }
+    el = innerActive;
+    depth++;
+  }
+
+  const finalTag = (el.tagName || "").toLowerCase();
+  if (finalTag === "iframe" || finalTag === "frame") {
+    return {
+      found: true,
+      name: "embedded frame",
+      role: "",
+      tag: "iframe",
+      type: "",
+      href: "",
+      isSubmit: false,
+      isSensitiveField: false,
+      inForm: false,
+      formSubmitName: "",
+      formHasSensitive: false,
+      uninspectable: true,
+    };
+  }
+
+  const doc = el.ownerDocument || document;
+  if (!el || el === doc.body || el === doc.documentElement) {
+    return {
+      found: false,
+      name: "",
+      role: "",
+      tag: "",
+      type: "",
+      href: "",
+      isSubmit: false,
+      isSensitiveField: false,
+      inForm: false,
+      formSubmitName: "",
+      formHasSensitive: false,
+    };
+  }
+
+  let name = "";
+  const ariaLabel = (el.getAttribute("aria-label") || "").trim();
+  if (ariaLabel) {
+    name = ariaLabel;
+  } else {
+    const labelledBy = (el.getAttribute("aria-labelledby") || "").trim();
+    if (labelledBy) {
+      const ids = labelledBy.split(/\s+/).filter(Boolean);
+      const text = ids
+        .map((id) => (doc.getElementById(id)?.innerText || doc.getElementById(id)?.textContent || "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      if (text) name = text;
+    }
+  }
+  if (!name) {
+    const it = (el.innerText || el.textContent || "").trim();
+    if (it) name = it.slice(0, 80);
+  }
+  const tag = (el.tagName || "").toLowerCase();
+  const attrType = (el.getAttribute("type") || "").toLowerCase();
+  const domType = (el.type || "").toLowerCase();
+  if (!name && (tag === "button" || tag === "input") && el.value && String(el.value).trim()) {
+    name = String(el.value).trim();
+  }
+  if (!name) {
+    const title = (el.getAttribute("title") || "").trim();
+    if (title) name = title;
+  }
+  if (!name) {
+    const ph = (el.getAttribute("placeholder") || "").trim();
+    if (ph) name = ph;
+  }
+  if (!name) {
+    const alt = (el.getAttribute("alt") || "").trim();
+    if (alt) name = alt;
+  }
+
+  const role = (el.getAttribute("role") || "").toLowerCase();
+  const type = attrType || domType || "";
+  const href = el.getAttribute("href") || el.href || "";
+
+  const form = el.closest ? el.closest("form") : null;
+  const inForm = Boolean(form);
+  let isSubmit = false;
+  if (tag === "button") {
+    if (attrType === "submit") isSubmit = true;
+    else if (!attrType && inForm) isSubmit = true;
+    else if (domType === "submit" && (inForm || attrType === "submit")) isSubmit = true;
+  } else if (tag === "input") {
+    if (domType === "submit" || domType === "image" || attrType === "submit" || attrType === "image") isSubmit = true;
+  } else if (role === "button") {
+    if (inForm && (attrType === "submit" || domType === "submit")) isSubmit = true;
+  }
+
+  function checkSensitive(target) {
+    if (!target) return false;
+    const dType = (target.type || "").toLowerCase();
+    const aType = (target.getAttribute("type") || "").toLowerCase();
+    if (dType === "password" || aType === "password") {
+      return true;
+    }
+    const auto = (target.getAttribute("autocomplete") || "").toLowerCase().trim();
+    const sensitiveAutos = [
+      "cc-number",
+      "cc-csc",
+      "cc-exp",
+      "cc-exp-month",
+      "cc-exp-year",
+      "cc-name",
+      "one-time-code",
+      "new-password",
+      "current-password",
+    ];
+    const autoTokens = auto.split(/\s+/);
+    if (sensitiveAutos.some((v) => autoTokens.includes(v) || auto.includes(v))) {
+      return true;
+    }
+    const elName = (target.getAttribute("name") || "").toLowerCase();
+    const elId = (target.id || target.getAttribute("id") || "").toLowerCase();
+    const elPh = (target.getAttribute("placeholder") || "").toLowerCase();
+    const textFields = `${elName} ${elId} ${elPh}`;
+    const normText = textFields.replace(/[-_]/g, " ").toLowerCase();
+    const englishMatch =
+      /\b(card\s*number|cvv|cvc|security\s*code|iban|otp|pin\s*code)\b/i.test(normText) ||
+      /cardnumber|pincode|securitycode/i.test(textFields);
+    if (englishMatch) {
+      return true;
+    }
+    const arNorm = textFields
+      .replace(/[\u064B-\u065F]/g, "")
+      .replace(/[إأآ]/g, "ا")
+      .replace(/ة/g, "ه");
+    const arabicMatch =
+      arNorm.includes("كلمه المرور") ||
+      arNorm.includes("كلمه السر") ||
+      arNorm.includes("باسورد") ||
+      arNorm.includes("باسوورد") ||
+      arNorm.includes("رقم البطاقه") ||
+      arNorm.includes("رقم الكارت") ||
+      arNorm.includes("الرقم السري") ||
+      arNorm.includes("رمز الامان");
+    return Boolean(arabicMatch);
+  }
+
+  const isSensitiveField = checkSensitive(el);
+
+  let formSubmitName = "";
+  let formHasSensitive = false;
+
+  if (form) {
+    const fields = form.querySelectorAll("input, select, textarea");
+    for (const f of fields) {
+      if (checkSensitive(f)) {
+        formHasSensitive = true;
+        break;
+      }
+    }
+
+    const candidates = form.querySelectorAll("button, input, [role='button']");
+    for (const btn of candidates) {
+      const bTag = (btn.tagName || "").toLowerCase();
+      const bAttrType = (btn.getAttribute("type") || "").toLowerCase();
+      const bDomType = (btn.type || "").toLowerCase();
+      const bRole = (btn.getAttribute("role") || "").toLowerCase();
+      let isSub = false;
+      if (bTag === "button") {
+        if (bAttrType === "submit") isSub = true;
+        else if (!bAttrType && bDomType !== "button" && bDomType !== "reset") isSub = true;
+        else if (bDomType === "submit") isSub = true;
+      } else if (bTag === "input") {
+        if (bDomType === "submit" || bDomType === "image" || bAttrType === "submit" || bAttrType === "image") isSub = true;
+      } else if (bRole === "button") {
+        if (bAttrType === "submit" || bDomType === "submit") isSub = true;
+      }
+      if (isSub) {
+        let bName = "";
+        const bAria = (btn.getAttribute("aria-label") || "").trim();
+        if (bAria) {
+          bName = bAria;
+        } else {
+          const bLabelled = (btn.getAttribute("aria-labelledby") || "").trim();
+          if (bLabelled) {
+            const ids = bLabelled.split(/\s+/).filter(Boolean);
+            const bDoc = btn.ownerDocument || document;
+            const text = ids
+              .map((id) => (bDoc.getElementById(id)?.innerText || bDoc.getElementById(id)?.textContent || "").trim())
+              .filter(Boolean)
+              .join(" ")
+              .trim();
+            if (text) bName = text;
+          }
+        }
+        if (!bName) {
+          const it = (btn.innerText || btn.textContent || "").trim();
+          if (it) bName = it.slice(0, 80);
+        }
+        if (!bName && (bTag === "button" || bTag === "input") && btn.value && String(btn.value).trim()) {
+          bName = String(btn.value).trim();
+        }
+        if (!bName) {
+          const title = (btn.getAttribute("title") || "").trim();
+          if (title) bName = title;
+        }
+        if (!bName) {
+          const ph = (btn.getAttribute("placeholder") || "").trim();
+          if (ph) bName = ph;
+        }
+        if (!bName) {
+          const alt = (btn.getAttribute("alt") || "").trim();
+          if (alt) bName = alt;
+        }
+        formSubmitName = (bName || "").slice(0, 80);
+        break;
+      }
+    }
+  }
+
+  return {
+    found: true,
+    name,
+    role,
+    tag,
+    type,
+    href,
+    isSubmit,
+    isSensitiveField,
+    inForm,
+    formSubmitName,
+    formHasSensitive,
+  };
+};
+
 export const typeSafetyScript = (ref) => {
   const el = document.querySelector(`[data-antigravity-ref="${ref}"]`);
   if (!el) return { found: false };
   el.focus();
-  const isPassword = el.type === "password";
-  const auto = (el.getAttribute("autocomplete") || "").toLowerCase();
-  const isCreditCard = auto.startsWith("cc-");
-  const name = (el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.getAttribute("name") || "").slice(0, 60);
-  return { found: true, isSensitive: isPassword || isCreditCard, name };
+  let name = "";
+  const ariaLabel = (el.getAttribute("aria-label") || "").trim();
+  if (ariaLabel) {
+    name = ariaLabel;
+  } else {
+    const labelledBy = (el.getAttribute("aria-labelledby") || "").trim();
+    if (labelledBy) {
+      const ids = labelledBy.split(/\s+/).filter(Boolean);
+      const text = ids
+        .map((id) => (document.getElementById(id)?.innerText || document.getElementById(id)?.textContent || "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      if (text) name = text;
+    }
+  }
+  if (!name) {
+    const it = (el.innerText || el.textContent || "").trim();
+    if (it) name = it.slice(0, 80);
+  }
+  const tag = (el.tagName || "").toLowerCase();
+  const attrType = (el.getAttribute("type") || "").toLowerCase();
+  const domType = (el.type || "").toLowerCase();
+  if (!name && (tag === "button" || tag === "input") && el.value && String(el.value).trim()) {
+    name = String(el.value).trim();
+  }
+  if (!name) {
+    const title = (el.getAttribute("title") || "").trim();
+    if (title) name = title;
+  }
+  if (!name) {
+    const ph = (el.getAttribute("placeholder") || "").trim();
+    if (ph) name = ph;
+  }
+  if (!name) {
+    const alt = (el.getAttribute("alt") || "").trim();
+    if (alt) name = alt;
+  }
+
+  let isSensitive = false;
+  if (domType === "password" || attrType === "password") {
+    isSensitive = true;
+  } else {
+    const auto = (el.getAttribute("autocomplete") || "").toLowerCase().trim();
+    const sensitiveAutos = [
+      "cc-number",
+      "cc-csc",
+      "cc-exp",
+      "cc-exp-month",
+      "cc-exp-year",
+      "cc-name",
+      "one-time-code",
+      "new-password",
+      "current-password",
+    ];
+    const autoTokens = auto.split(/\s+/);
+    if (sensitiveAutos.some((v) => autoTokens.includes(v) || auto.includes(v))) {
+      isSensitive = true;
+    } else {
+      const elName = (el.getAttribute("name") || "").toLowerCase();
+      const elId = (el.id || el.getAttribute("id") || "").toLowerCase();
+      const elPh = (el.getAttribute("placeholder") || "").toLowerCase();
+      const textFields = `${elName} ${elId} ${elPh}`;
+      const normText = textFields.replace(/[-_]/g, " ").toLowerCase();
+      const englishMatch =
+        /\b(card\s*number|cvv|cvc|security\s*code|iban|otp|pin\s*code)\b/i.test(normText) ||
+        /cardnumber|pincode|securitycode/i.test(textFields);
+      if (englishMatch) {
+        isSensitive = true;
+      } else {
+        const arNorm = textFields
+          .replace(/[\u064B-\u065F]/g, "")
+          .replace(/[إأآ]/g, "ا")
+          .replace(/ة/g, "ه");
+        const arabicMatch =
+          arNorm.includes("كلمه المرور") ||
+          arNorm.includes("كلمه السر") ||
+          arNorm.includes("باسورد") ||
+          arNorm.includes("باسوورد") ||
+          arNorm.includes("رقم البطاقه") ||
+          arNorm.includes("رقم الكارت") ||
+          arNorm.includes("الرقم السري") ||
+          arNorm.includes("رمز الامان");
+        if (arabicMatch) {
+          isSensitive = true;
+        }
+      }
+    }
+  }
+
+  return { found: true, isSensitive, name };
 };
 
 export const formInputScript = (ref, val) => {

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { FileAttachment, SavedAttachment } from "./types.js";
@@ -31,6 +32,64 @@ const ALLOWED_EXTENSIONS = new Set([
   ".txt", ".md", ".csv", ".json", ".html", ".xml",
   ".docx", ".xlsx", ".pptx",
 ]);
+
+export const UPLOAD_RESTRICTION_ERROR =
+  "upload_file only accepts files the user attached in the MyChrome panel (they are stored in the MyChrome uploads folder); ask the user to attach the file in the panel and use the path from the attachment.";
+
+/**
+ * Resolves and validates file paths for upload_file tool.
+ * Only accepts existing regular files that live inside the MyChrome uploads folder.
+ */
+export function resolveUploadPaths(
+  paths: unknown,
+  uploadsRoot?: string
+): { ok: true; paths: string[] } | { ok: false; error: string } {
+  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 5) {
+    return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  }
+  for (const p of paths) {
+    if (typeof p !== "string" || !p.trim()) {
+      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+    }
+  }
+
+  const root = uploadsRoot ?? getUploadsDir();
+  let realRoot: string;
+  try {
+    if (!fs.existsSync(root)) {
+      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+    }
+    realRoot = fs.realpathSync(root);
+  } catch {
+    return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  }
+
+  const rootForRel = process.platform === "win32" ? realRoot.toLowerCase() : realRoot;
+  const resolvedPaths: string[] = [];
+
+  for (const rawPath of paths as string[]) {
+    try {
+      if (!fs.existsSync(rawPath)) {
+        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      }
+      const realFilePath = fs.realpathSync(rawPath);
+      const stat = fs.statSync(realFilePath);
+      if (!stat.isFile()) {
+        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      }
+      const fileForRel = process.platform === "win32" ? realFilePath.toLowerCase() : realFilePath;
+      const rel = path.relative(rootForRel, fileForRel);
+      if (rel.startsWith("..") || path.isAbsolute(rel) || rel === "") {
+        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      }
+      resolvedPaths.push(realFilePath);
+    } catch {
+      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+    }
+  }
+
+  return { ok: true, paths: resolvedPaths };
+}
 
 /**
  * Sanitizes a filename against path traversal and Windows reserved names.
@@ -81,10 +140,17 @@ export function validateAttachment(attachment: FileAttachment): { valid: boolean
   const ext = path.extname(attachment.name || "").toLowerCase();
   const mime = (attachment.mime || "").toLowerCase();
 
-  const mimeAllowed = ALLOWED_MIME_TYPES.has(mime) || mime.startsWith("text/");
-  const extAllowed = ALLOWED_EXTENSIONS.has(ext);
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return { valid: false, error: `File type not supported for "${attachment.name}"` };
+  }
 
-  if (!mimeAllowed && !extAllowed) {
+  const mimeAllowed =
+    mime === "" ||
+    mime === "application/octet-stream" ||
+    mime.startsWith("text/") ||
+    ALLOWED_MIME_TYPES.has(mime);
+
+  if (!mimeAllowed) {
     return { valid: false, error: `File type not supported for "${attachment.name}"` };
   }
 
@@ -92,7 +158,7 @@ export function validateAttachment(attachment: FileAttachment): { valid: boolean
 }
 
 /**
- * Saves a single attachment to ~/.gemini/mychrome/uploads/<yyyy-mm-dd>/<messageId>-<n>-<safe-name>.
+ * Saves a single attachment to ~/.gemini/mychrome/uploads/<yyyy-mm-dd>/<random>-<messageId>-<n>-<safe-name>.
  */
 export async function saveAttachment(
   messageId: number,
@@ -100,6 +166,11 @@ export async function saveAttachment(
   attachment: FileAttachment,
   customUploadsDir?: string
 ): Promise<SavedAttachment> {
+  const validation = validateAttachment(attachment);
+  if (!validation.valid) {
+    throw new Error(validation.error || `Invalid attachment "${attachment?.name}"`);
+  }
+
   const uploadsRoot = customUploadsDir || getUploadsDir();
   const dateStr = new Date().toISOString().slice(0, 10);
   const dayDir = path.join(uploadsRoot, dateStr);
@@ -108,8 +179,9 @@ export async function saveAttachment(
     fs.mkdirSync(dayDir, { recursive: true, mode: 0o700 });
   }
 
+  const rand = crypto.randomBytes(3).toString("hex");
   const safeName = sanitizeFileName(attachment.name || `file_${index}`);
-  const fileName = `${messageId}-${index}-${safeName}`;
+  const fileName = `${rand}-${messageId}-${index}-${safeName}`;
   const filePath = path.join(dayDir, fileName);
 
   // Decode base64 payload

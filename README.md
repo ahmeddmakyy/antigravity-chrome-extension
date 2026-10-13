@@ -41,7 +41,9 @@ Then show me the full result.
 
 **2. Add the extension to Chrome.** Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and paste the folder path the installer copied for you (`~/.gemini/mychrome/extension`). Keep that folder where it is: Chrome loads the extension from it.
 
-**3. Connect.** Restart Antigravity, type `/mychrome` once in a new conversation, then click the MyChrome icon on any tab.
+**3. Connect.** Restart Antigravity and click the MyChrome icon on any tab. There is nothing to pair: the helper that Antigravity starts puts a private key file inside the extension folder and the extension picks it up by itself, so the panel shows **Ready** a moment after Antigravity is open. If the panel ever says it needs a key, make sure Antigravity is open and click **Reload** on MyChrome in `chrome://extensions`, or paste the key in Settings. Upgrading from 5.2.0 needs no extra step beyond reloading the extension.
+
+When you write in the panel and no Antigravity conversation is linked, MyChrome starts one conversation called "MyChrome" by itself (in the Antigravity project `CLI Project`) and keeps using it. A conversation you link with `/mychrome` always takes priority.
 
 You can also give the task straight from Antigravity: type `/mychrome` followed by what you want, for example `/mychrome summarize my unread Gmail`, and it opens Chrome and does it.
 
@@ -66,7 +68,7 @@ MyChrome never reads your Antigravity sign-in. It uses Antigravity's documented 
 | You see | Fix |
 |---|---|
 | **Offline** | Open Antigravity, or quit it completely and open it again. |
-| **Not linked** | Type `/mychrome` once in an Antigravity conversation. |
+| **Not linked** | Write in the panel and MyChrome starts its own conversation, or type `/mychrome` once in the conversation you prefer. |
 | An orange banner about an old version | Click **Reload** on MyChrome in `chrome://extensions`. |
 | "Still working" with no new steps | Antigravity may be waiting for you to approve a tool. |
 | Chrome cannot load the extension | The folder was moved or deleted. Repeat install steps 1 and 2. |
@@ -84,6 +86,20 @@ It uses your own Antigravity app, so your Antigravity plan's limits apply.
 **Where does my data go?**
 Only to your Antigravity app on your computer. Files you attach are saved in `~/.gemini/mychrome/uploads` and deleted after 7 days. MyChrome has no server and collects no analytics.
 </details>
+
+## Security and permissions
+
+- **Localhost and key:** The bridge listens on `127.0.0.1` only and rejects requests whose `Host` header is not a loopback address. The extension authenticates with a secret key rather than relying on browser `Origin` headers. The helper writes that key to a file inside the extension folder (`pairing.json`, readable only through the extension itself, never by web pages and excluded from git); there is no code to type.
+- **Approval modes:** A button in the side panel composer allows switching between:
+  - **Manually approve (default):** Prompts for your confirmation before visiting a site for the first time in a session (Allow for this session / Always allow this site / Deny), clicking risky buttons (such as pay, buy, delete, send, or submit in English and Arabic), executing JavaScript on a page, uploading files, or closing tabs.
+  - **Automatically approve ("Auto"):** Skips the per-step prompts above. Automatic mode can only be enabled by the user after confirming a warning dialog. This setting controls MyChrome only and does not change any Antigravity permission settings.
+- **Always blocked in both modes:**
+  - Sites on the protected list (banks, payment services, password managers, and major account login pages) are blocked unless explicitly added to "Protected sites you allow anyway".
+  - The agent cannot type or send keystrokes into password or payment card fields; you must fill those yourself.
+  - Navigation is restricted to `http:` and `https:`; protocols such as `file:`, `chrome:`, `javascript:`, `data:`, and `ftp:` are blocked.
+- **File uploads:** The `upload_file` tool can only send files that the user attached through the side panel (stored in `~/.gemini/mychrome/uploads/` and deleted after 7 days). Arbitrary local file paths, the pairing token file, UNC paths, directories, symlinks, and path traversal (`..`) are rejected.
+- **Safety settings:** The side panel settings let you toggle sensitive site protection, review or revoke allowed sites, configure custom "Blocked sites", and manage "Protected sites you allow anyway".
+- **Data flow and prompt injection:** MyChrome runs no remote servers and collects no analytics; communication between Chrome and Antigravity stays on localhost. However, page contents read by the agent, screenshots, and attached files are passed to your Antigravity agent, which sends them to Google's AI models subject to Google's terms and privacy policy. Untrusted web pages may contain prompt injection attempts designed to mislead the agent, which is why manual mode is the default and automatic mode should only be used on trusted sites.
 
 ## Credits
 
@@ -126,7 +142,9 @@ MIT. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 
 1. **اطلب من Antigravity تثبيتها.** الصق رسالة التثبيت الموجودة في قسم [Install](#install) في محادثة جديدة داخل Antigravity، واضغط **Allow** عندما يطلب الإذن.
 2. **أضف الإضافة إلى Chrome.** افتح `chrome://extensions`، وفعّل **Developer mode**، واضغط **Load unpacked**، والصق مسار المجلد الذي نسخه المثبّت لك (`~/.gemini/mychrome/extension`). اترك هذا المجلد في مكانه، لأن Chrome يحمّل الإضافة منه.
-3. **اربطها.** أعد تشغيل Antigravity، واكتب `/mychrome` مرة واحدة في محادثة جديدة، ثم اضغط أيقونة MyChrome على أي تبويب.
+3. **الاتصال.** أعد تشغيل Antigravity ثم اضغط أيقونة MyChrome على أي تبويب. لا يوجد اقتران: البرنامج المساعد الذي يشغّله Antigravity يضع ملف مفتاح خاصًا داخل مجلد الإضافة، وتلتقطه الإضافة تلقائيًا، فتظهر حالة **Ready** بعد لحظات من فتح Antigravity. وإذا ظهر في الشريط أنه يحتاج مفتاحًا، فتأكد من أن Antigravity مفتوح واضغط **Reload** على MyChrome في `chrome://extensions`، أو الصق المفتاح في الإعدادات. ولا تتطلب الترقية من الإصدار 5.2.0 أي خطوة سوى إعادة تحميل الإضافة.
+
+وعندما تكتب في الشريط ولا توجد محادثة مرتبطة في Antigravity، تنشئ MyChrome تلقائيًا محادثة واحدة باسم "MyChrome" (في مشروع Antigravity المسمّى `CLI Project`) وتواصل استخدامها. وتبقى المحادثة التي تربطها بالأمر `/mychrome` هي صاحبة الأولوية دائمًا.
 
 ويمكنك أيضًا إعطاء المهمة مباشرة من Antigravity: اكتب `/mychrome` ثم ما تريده، مثل `/mychrome لخّص رسائل Gmail غير المقروءة`، فيفتح Chrome وينفّذها.
 
@@ -151,7 +169,7 @@ MIT. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 | ما تراه | الحل |
 |---|---|
 | **Offline** | افتح Antigravity، أو أغلقه تمامًا وافتحه من جديد. |
-| **Not linked** | اكتب `/mychrome` مرة واحدة في محادثة داخل Antigravity. |
+| **Not linked** | اكتب في الشريط فتنشئ MyChrome محادثتها الخاصة، أو اكتب `/mychrome` مرة واحدة في المحادثة التي تفضّلها. |
 | شريط برتقالي عن نسخة قديمة | اضغط **Reload** على MyChrome في `chrome://extensions`. |
 | "Still working" بدون خطوات جديدة | ربما ينتظر Antigravity موافقتك على أداة. |
 | Chrome لا يستطيع تحميل الإضافة | تم نقل المجلد أو حذفه. كرّر الخطوتين 1 و2 من التثبيت. |
@@ -169,6 +187,20 @@ MIT. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 **أين تذهب بياناتي؟**
 إلى تطبيق Antigravity على جهازك فقط. الملفات التي ترفقها تُحفظ في `~/.gemini/mychrome/uploads` وتُحذف بعد 7 أيام. لا يملك MyChrome أي خادم، ولا يجمع أي إحصاءات.
 </details>
+
+### الأمان والأذونات
+
+- **المضيف المحلي والمفتاح:** يستمع الجسر المحلي حصريًا على `127.0.0.1` ويرفض أي طلبات لا تتضمن عنوان Host محليًا. لا تعتمد الإضافة على ترويسة `Origin` في المتصفح، بل تتصل بمفتاح سري. يكتب البرنامج المساعد هذا المفتاح في ملف داخل مجلد الإضافة (`pairing.json`) لا تستطيع صفحات الويب قراءته ويُستثنى من git، ولا يوجد رمز لإدخاله.
+- **أوضاع الموافقة:** يتيح زر وضع الموافقة في شريط الكتابة التبديل بين:
+  - **الموافقة اليدوية (الوضع الافتراضي):** تطلب الإضافة موافقتك قبل زيارة أي موقع لأول مرة في الجلسة (السماح لهذه الجلسة / السماح دائمًا لهذا الموقع / الرفض)، وقبل الضغط على الأزرار الحساسة (مثل الدفع، والشراء، والحذف، والإرسال، والتأكيد باللغتين العربية والإنجليزية)، وقبل تشغيل كود JavaScript، وقبل رفع الملفات، وقبل إغلاق التبويبات.
+  - **الموافقة التلقائية ("Auto"):** تتخطى طلبات الموافقة الفردية المذكورة أعلاه. لا يمكن تفعيل هذا الوضع إلا بعد موافقة المستخدم على رسالة تحذيرية. يتحكم هذا الإعداد في سلوك MyChrome فقط ولا يغيّر أيًا من إعدادات أذونات Antigravity.
+- **المحظورات الدائمة في كلا الوضعين:**
+  - المواقع المدرجة في قائمة المواقع المحمية (البنوك، وخدمات الدفع، ومديرو كلمات المرور، وصفحات تسجيل الدخول للحسابات الرئيسية) محظورة ما لم يضفها المستخدم صراحة إلى "المواقع المحمية المسموح بها".
+  - يُمنع الوكيل تمامًا من الكتابة أو إرسال ضغطات المفاتيح في حقول كلمات المرور والبطاقات البنكية؛ ويجب على المستخدم إدخالها يدويًا.
+  - يقتصر الانتقال على روابط `http:` و`https:` فقط؛ وتُحظر البروتوكولات الأخرى مثل `file:` و`chrome:` و`javascript:` و`data:` و`ftp:`.
+- **رفع الملفات:** تقتصر أداة `upload_file` على إرسال الملفات التي أرفقها المستخدم يدويًا عبر الشريط الجانبي (المحفوظة محليًا في `~/.gemini/mychrome/uploads/` والتي تُحذف تلقائيًا بعد 7 أيام). تُرفض أي مسارات ملفات محلية عشوائية، أو ملف رمز الاقتران، أو مسارات UNC، أو المجلدات، أو الروابط الرمزية، أو مسارات التراجع (`..`).
+- **إعدادات الأمان:** توفر نافذة إعدادات الأمان في الشريط الجانبي إمكانية تفعيل أو تعطيل حماية المواقع الحساسة، ومراجعة أو إلغاء أذونات المواقع المسموح بها دائمًا، وإدارة قائمة مخصصة لـ "المواقع المحظورة"، وضبط استثناءات "المواقع المحمية المسموح بها".
+- **مسار البيانات ومخاطر حقن الأوامر (Prompt Injection):** لا يملك MyChrome أي خادم خارجي ولا يجمع أي بيانات تحليلية، وتبقى جميع الاتصالات على المضيف المحلي. ومع ذلك، فإن محتويات الصفحات التي يقرؤها الوكيل ولقطات الشاشة والملفات المرفقة تُنقل إلى وكيل Antigravity، الذي يرسلها إلى نماذج Google للذكاء الاصطناعي وفقًا لشروط وسياسة خصوصية Google. قد تحتوي بعض صفحات الويب غير الموثوقة على نصوص تسعى لخداع وكيل الذكاء الاصطناعي (حقن الأوامر)، ولهذا السبب فُعّل وضع الموافقة اليدوية افتراضيًا، ويُوصى بعدم استخدام الوضع التلقائي إلا على المواقع الموثوقة.
 
 ### الترخيص
 

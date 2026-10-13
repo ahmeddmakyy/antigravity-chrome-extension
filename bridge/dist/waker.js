@@ -42,6 +42,8 @@ var BRIDGE_ROOT = path2.resolve(__dirname, "..");
 var PORT = parseInt(process.env.BRIDGE_PORT || "8765", 10);
 var BASE = `http://127.0.0.1:${PORT}`;
 var JOB_TIMEOUT_MS = 2e4;
+var NEW_CONV_TIMEOUT_MS = 6e4;
+var UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 var logSink = null;
 function setWakerLogger(fn) {
   logSink = fn;
@@ -119,6 +121,51 @@ function runAgentApi(api, job) {
     });
   });
 }
+function runAgentApiNewConversation(api, job) {
+  return new Promise((resolve) => {
+    const useSafe = api.needsShell;
+    const rawPrompt = useSafe && job.safePrompt ? job.safePrompt : job.prompt;
+    const prompt = useSafe ? rawPrompt.replace(/[^A-Za-z0-9 .,_']/g, " ") : job.prompt;
+    const title = job.title || "MyChrome";
+    const args = ["new-conversation", `--title=${title}`, prompt];
+    const env = { ...process.env };
+    if (!env.ANTIGRAVITY_PROJECT_ID && job.projectId) {
+      env.ANTIGRAVITY_PROJECT_ID = job.projectId;
+    }
+    const child = useSafe ? spawn(`"${api.bin}"`, args.map((a) => `"${a}"`), { shell: true, windowsHide: true, env }) : spawn(api.bin, args, { shell: false, windowsHide: true, env });
+    let stderr = "";
+    let stdout = "";
+    child.stdout?.on("data", (d) => stdout += d.toString());
+    child.stderr?.on("data", (d) => stderr += d.toString());
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, error: "agentapi timed out", usedSafePrompt: useSafe });
+    }, NEW_CONV_TIMEOUT_MS);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: `agentapi could not start: ${err.message}`, usedSafePrompt: useSafe });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        try {
+          const parsed = JSON.parse(stdout);
+          const cid = parsed?.response?.newConversation?.conversationId;
+          if (typeof cid === "string" && UUID_RE.test(cid)) {
+            resolve({ ok: true, conversationId: cid, usedSafePrompt: useSafe });
+          } else {
+            resolve({ ok: false, error: "Invalid or missing conversationId in agentapi response", usedSafePrompt: useSafe });
+          }
+        } catch {
+          resolve({ ok: false, error: "Failed to parse agentapi JSON response", usedSafePrompt: useSafe });
+        }
+      } else {
+        const detail = (stderr || stdout).trim().slice(0, 400);
+        resolve({ ok: false, error: `agentapi exited with code ${code}${detail ? `: ${detail}` : ""}`, usedSafePrompt: useSafe });
+      }
+    });
+  });
+}
 async function postResult(token, body) {
   try {
     await fetch(`${BASE}/waker/result`, {
@@ -181,7 +228,15 @@ async function runWaker() {
     } catch {
       continue;
     }
-    if (!job || job.action !== "send-message" || !job.conversationId) continue;
+    if (!job) continue;
+    if (job.kind === "new_conversation") {
+      log(`Starting new conversation for ${job.jobId} (title: ${job.title})`);
+      const result2 = await runAgentApiNewConversation(api, job);
+      log(result2.ok ? `Started ${job.jobId} -> ${result2.conversationId ? result2.conversationId.slice(0, 8) : ""}` : `Failed ${job.jobId}: ${result2.error}`);
+      await postResult(token, { jobId: job.jobId, ...result2 });
+      continue;
+    }
+    if (job.action !== "send-message" || !job.conversationId) continue;
     log(`Delivering ${job.jobId} to conversation ${job.conversationId}`);
     const result = await runAgentApi(api, job);
     log(result.ok ? `Delivered ${job.jobId}` : `Failed ${job.jobId}: ${result.error}`);

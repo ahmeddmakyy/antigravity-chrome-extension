@@ -1,3 +1,4 @@
+import "./setup.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -39,7 +40,7 @@ test("version sync: all components share the exact same version string", () => {
   assert.ok(verTsMatch, "version.ts must define BRIDGE_VERSION constant");
   const verTsVer = verTsMatch[1];
 
-  assert.equal(manifestVer, "5.2.0", "manifest.json version is 5.2.0");
+  assert.equal(manifestVer, "5.3.0", "manifest.json version is 5.3.0");
   assert.equal(pkgVer, manifestVer, "bridge/package.json version matches manifest");
   assert.equal(bgVer, manifestVer, "background.js BUILD matches manifest");
   assert.equal(spVer, manifestVer, "sidepanel.js PANEL_BUILD matches manifest");

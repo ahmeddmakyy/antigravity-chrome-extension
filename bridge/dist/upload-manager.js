@@ -1,6 +1,7 @@
 import { createRequire as __createRequire } from 'module'; const require = __createRequire(import.meta.url);
 
 // src/upload-manager.ts
+import crypto from "crypto";
 import fs2 from "fs";
 import path2 from "path";
 
@@ -101,6 +102,50 @@ var ALLOWED_EXTENSIONS = /* @__PURE__ */ new Set([
   ".xlsx",
   ".pptx"
 ]);
+var UPLOAD_RESTRICTION_ERROR = "upload_file only accepts files the user attached in the MyChrome panel (they are stored in the MyChrome uploads folder); ask the user to attach the file in the panel and use the path from the attachment.";
+function resolveUploadPaths(paths, uploadsRoot) {
+  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 5) {
+    return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  }
+  for (const p of paths) {
+    if (typeof p !== "string" || !p.trim()) {
+      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+    }
+  }
+  const root = uploadsRoot ?? getUploadsDir();
+  let realRoot;
+  try {
+    if (!fs2.existsSync(root)) {
+      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+    }
+    realRoot = fs2.realpathSync(root);
+  } catch {
+    return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  }
+  const rootForRel = process.platform === "win32" ? realRoot.toLowerCase() : realRoot;
+  const resolvedPaths = [];
+  for (const rawPath of paths) {
+    try {
+      if (!fs2.existsSync(rawPath)) {
+        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      }
+      const realFilePath = fs2.realpathSync(rawPath);
+      const stat = fs2.statSync(realFilePath);
+      if (!stat.isFile()) {
+        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      }
+      const fileForRel = process.platform === "win32" ? realFilePath.toLowerCase() : realFilePath;
+      const rel = path2.relative(rootForRel, fileForRel);
+      if (rel.startsWith("..") || path2.isAbsolute(rel) || rel === "") {
+        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      }
+      resolvedPaths.push(realFilePath);
+    } catch {
+      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+    }
+  }
+  return { ok: true, paths: resolvedPaths };
+}
 function sanitizeFileName(rawName) {
   if (!rawName || typeof rawName !== "string") return "upload";
   let clean = rawName.trim().split(/[\\/]/).pop() || "";
@@ -128,22 +173,29 @@ function validateAttachment(attachment) {
   }
   const ext = path2.extname(attachment.name || "").toLowerCase();
   const mime = (attachment.mime || "").toLowerCase();
-  const mimeAllowed = ALLOWED_MIME_TYPES.has(mime) || mime.startsWith("text/");
-  const extAllowed = ALLOWED_EXTENSIONS.has(ext);
-  if (!mimeAllowed && !extAllowed) {
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return { valid: false, error: `File type not supported for "${attachment.name}"` };
+  }
+  const mimeAllowed = mime === "" || mime === "application/octet-stream" || mime.startsWith("text/") || ALLOWED_MIME_TYPES.has(mime);
+  if (!mimeAllowed) {
     return { valid: false, error: `File type not supported for "${attachment.name}"` };
   }
   return { valid: true };
 }
 async function saveAttachment(messageId, index, attachment, customUploadsDir) {
+  const validation = validateAttachment(attachment);
+  if (!validation.valid) {
+    throw new Error(validation.error || `Invalid attachment "${attachment?.name}"`);
+  }
   const uploadsRoot = customUploadsDir || getUploadsDir();
   const dateStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const dayDir = path2.join(uploadsRoot, dateStr);
   if (!fs2.existsSync(dayDir)) {
     fs2.mkdirSync(dayDir, { recursive: true, mode: 448 });
   }
+  const rand = crypto.randomBytes(3).toString("hex");
   const safeName = sanitizeFileName(attachment.name || `file_${index}`);
-  const fileName = `${messageId}-${index}-${safeName}`;
+  const fileName = `${rand}-${messageId}-${index}-${safeName}`;
   const filePath = path2.join(dayDir, fileName);
   let rawData = attachment.data;
   const commaIdx = rawData.indexOf(",");
@@ -210,7 +262,9 @@ function cleanOldUploads(maxAgeDays = 7, customUploadsDir) {
 export {
   MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_FILE_SIZE_BYTES,
+  UPLOAD_RESTRICTION_ERROR,
   cleanOldUploads,
+  resolveUploadPaths,
   sanitizeFileName,
   saveAttachment,
   validateAttachment

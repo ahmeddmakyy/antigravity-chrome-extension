@@ -8,7 +8,7 @@ import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
 // src/version.ts
-var BRIDGE_VERSION = "5.2.0";
+var BRIDGE_VERSION = "5.3.0";
 
 // src/setup.ts
 var __filename = fileURLToPath(import.meta.url);
