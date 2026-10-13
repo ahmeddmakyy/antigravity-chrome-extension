@@ -20,11 +20,27 @@ import {
   scrollProbeScript,
   scrollToRefScript,
   typeSafetyScript,
+  describeRefScript,
+  describePointScript,
+  activeElementScript,
   formInputScript,
   selectorExistsScript,
 } from "./bg/page-scripts.js";
+import {
+  parseBundledKey,
+  isTrustedConnectSender,
+} from "./shared/pairing.js";
+import {
+  evaluateAction,
+  redactTabs,
+  hostOf,
+  isProtectedHost,
+  isUserBlocked,
+  DEFAULT_SETTINGS,
+  MODES,
+} from "./shared/policy.js";
 
-const BUILD = "5.2.0";
+const BUILD = "5.3.0";
 const PANEL_PORT = "antigravity-sidepanel";
 const BACKOFF_STEPS = [2000, 5000, 15000, 30000, 60000];
 
@@ -39,11 +55,19 @@ let offlineSince = null;
 let failedAttempts = 0;
 let bridgeVersion = null;
 let authFailed = false;
+let pairingRequired = false;
+let currentBridgePort = 8765;
 
 let currentToken = "";
 const defaultUiLang = ((chrome.i18n && chrome.i18n.getUILanguage ? chrome.i18n.getUILanguage() : "en").toLowerCase().startsWith("ar")) ? "ar" : "en";
 let currentUiLanguage = defaultUiLang;
 let blocklistDomains = [];
+let approvalMode = DEFAULT_SETTINGS.approvalMode;
+let protectSensitiveSites = DEFAULT_SETTINGS.protectSensitiveSites;
+let allowedProtectedHosts = [];
+let grantsAlways = [];
+let grantsSession = [];
+const pendingApprovals = new Map();
 let lastAgentStatus = null;
 let isListeningState = false;
 
@@ -81,10 +105,42 @@ let isStorageLoaded = false;
 let isRecording = false;
 let logSession = { startedAt: null, stoppedAt: null };
 
+async function loadBundledKey() {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(chrome.runtime.getURL("pairing.json"), {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) return null;
+    const text = await res.text();
+    return parseBundledKey(text);
+  } catch {
+    return null;
+  }
+}
+
 const storageInitPromise = new Promise((resolve) => {
   chrome.storage.local.get(
-    ["eventLog", "eventSeq", "isVerboseMode", "logRecording", "logSession", "chatHistory", "uiLanguage", "pairingToken", "blocklist"],
-    (res) => {
+    [
+      "eventLog",
+      "eventSeq",
+      "isVerboseMode",
+      "logRecording",
+      "logSession",
+      "chatHistory",
+      "uiLanguage",
+      "pairingToken",
+      "blocklist",
+      "bridgePort",
+      "approvalMode",
+      "protectSensitiveSites",
+      "allowedProtectedHosts",
+      "siteGrants",
+    ],
+    async (res) => {
       if (Array.isArray(res.eventLog)) eventLog = res.eventLog;
       if (typeof res.eventSeq === "number") eventSeq = res.eventSeq;
       if (typeof res.isVerboseMode === "boolean") isVerboseMode = res.isVerboseMode;
@@ -92,8 +148,34 @@ const storageInitPromise = new Promise((resolve) => {
       if (res.logSession && typeof res.logSession === "object") logSession = res.logSession;
       if (Array.isArray(res.chatHistory)) history = res.chatHistory;
       if (res.uiLanguage) currentUiLanguage = res.uiLanguage;
+      if (res.bridgePort) currentBridgePort = res.bridgePort;
       currentToken = res.pairingToken || "";
+      try {
+        const bundledKey = await loadBundledKey();
+        if (bundledKey && bundledKey !== currentToken) {
+          currentToken = bundledKey;
+          await chrome.storage.local.set({ pairingToken: bundledKey });
+        }
+      } catch {}
       blocklistDomains = parseBlocklist(res.blocklist);
+      if (res.approvalMode === MODES.MANUAL || res.approvalMode === MODES.AUTO) {
+        approvalMode = res.approvalMode;
+      }
+      if (typeof res.protectSensitiveSites === "boolean") {
+        protectSensitiveSites = res.protectSensitiveSites;
+      }
+      if (Array.isArray(res.allowedProtectedHosts)) {
+        allowedProtectedHosts = res.allowedProtectedHosts;
+      }
+      if (Array.isArray(res.siteGrants)) {
+        grantsAlways = res.siteGrants;
+      }
+      try {
+        const sRes = await chrome.storage.session.get("sessionGrants");
+        if (Array.isArray(sRes?.sessionGrants)) {
+          grantsSession = sRes.sessionGrants;
+        }
+      } catch {}
       historyLoaded = true;
       isStorageLoaded = true;
       resolve();
@@ -216,14 +298,34 @@ self.addEventListener("unhandledrejection", (e) => {
 // Settings
 // ---------------------------------------------------------------------------
 chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "session") {
+    if (changes.sessionGrants) {
+      grantsSession = Array.isArray(changes.sessionGrants.newValue) ? changes.sessionGrants.newValue : [];
+    }
+    return;
+  }
   if (area !== "local") return;
   if (changes.pairingToken) currentToken = changes.pairingToken.newValue || "";
+  if (changes.bridgePort) currentBridgePort = changes.bridgePort.newValue || 8765;
   if (changes.uiLanguage) {
     currentUiLanguage = changes.uiLanguage.newValue || "ar";
     sendToBridge({ type: "ui_language", lang: currentUiLanguage });
     if (currentTaskTabId && currentTaskState !== "idle") setOverlayStateOnTab(currentTaskTabId, currentTaskState, currentTaskLabel);
   }
   if (changes.blocklist) blocklistDomains = parseBlocklist(changes.blocklist.newValue);
+  if (changes.approvalMode) {
+    const val = changes.approvalMode.newValue;
+    if (val === MODES.MANUAL || val === MODES.AUTO) approvalMode = val;
+  }
+  if (changes.protectSensitiveSites) {
+    protectSensitiveSites = typeof changes.protectSensitiveSites.newValue === "boolean" ? changes.protectSensitiveSites.newValue : true;
+  }
+  if (changes.allowedProtectedHosts) {
+    allowedProtectedHosts = Array.isArray(changes.allowedProtectedHosts.newValue) ? changes.allowedProtectedHosts.newValue : [];
+  }
+  if (changes.siteGrants) {
+    grantsAlways = Array.isArray(changes.siteGrants.newValue) ? changes.siteGrants.newValue : [];
+  }
   if (changes.pairingToken || changes.bridgePort) {
     authFailed = false;
     reconnectDelay = 1000;
@@ -435,8 +537,11 @@ function connectBridgeWebSocket() {
     reconnectTimer = null;
   }
 
-  chrome.storage.local.get(["bridgePort", "pairingToken"], async (res) => {
+  (async () => {
+    await storageInitPromise;
+    const res = await chrome.storage.local.get(["bridgePort", "pairingToken"]);
     const port = res.bridgePort || 8765;
+    currentBridgePort = port;
     if (res.pairingToken) currentToken = res.pairingToken;
 
     // Ping pre-check: verify bridge HTTP is reachable before opening WebSocket to prevent net::ERR_CONNECTION_REFUSED
@@ -504,7 +609,7 @@ function connectBridgeWebSocket() {
     socket.onerror = () => {
       // onclose follows and handles reconnecting
     };
-  });
+  })();
 }
 
 function onSocketDown(reason, code) {
@@ -513,9 +618,14 @@ function onSocketDown(reason, code) {
     offlineSince = Date.now();
     logEvent("background", "bridge_offline", { reason, note: "Retries are silent until the bridge is back." });
   }
-  // Wrong token or another window took over: retry slowly instead of hammering.
-  const slow = authFailed || code === 4000;
-  scheduleReconnect(slow ? 30000 : undefined);
+  // While pairing is required, reconnect only at the slowest backoff step.
+  // Otherwise, wrong token or another window took over: retry slowly instead of hammering.
+  if (pairingRequired) {
+    scheduleReconnect(BACKOFF_STEPS[BACKOFF_STEPS.length - 1]);
+  } else {
+    const slow = authFailed || code === 4000;
+    scheduleReconnect(slow ? 30000 : undefined);
+  }
 }
 
 function scheduleReconnect(fixedDelay) {
@@ -558,12 +668,13 @@ async function waitForBridge(ms) {
 // The helper opens http://127.0.0.1:8765/connect when it needs Chrome (for example after /mychrome).
 // That page wakes this service worker; we connect, then tidy the tab away.
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
-  if (msg?.type !== "mychrome_wake") return false;
+  if (msg?.type !== "mychrome_wake" || !isTrustedConnectSender(sender?.url, currentBridgePort)) {
+    return false;
+  }
   connectNow("wake_page");
   sendResponse({ ok: true, version: BUILD });
-  const fromConnectPage = /^http:\/\/(127\.0\.0\.1|localhost):\d+\/connect/.test(sender.url || "");
   const tabId = sender.tab?.id;
-  if (fromConnectPage && typeof tabId === "number") {
+  if (typeof tabId === "number") {
     waitForBridge(10000).then(async (ok) => {
       if (!ok) return;
       try {
@@ -590,15 +701,32 @@ function notifyPanels(msg) {
 }
 
 function stateSync() {
+  const pendingApprovalsList = [...pendingApprovals.values()].map((p) => ({
+    id: p.id,
+    code: p.code,
+    host: p.host,
+    tool: p.tool,
+    target: p.target,
+    tabTitle: p.tabTitle,
+    detail: p.detail,
+  }));
+
   return {
     type: "state_sync",
     build: BUILD,
     bridgeVersion,
     connected: Boolean(ws && ws.readyState === WebSocket.OPEN && bridgeVersion !== null),
     listening: isListeningState,
+    pairingRequired,
     agentStatus: lastAgentStatus,
+    linkedId: lastAgentStatus?.linkedId || null,
+    linkedAt: lastAgentStatus?.linkedAt || null,
     taskState: currentTaskState,
     taskLabel: currentTaskLabel,
+    approvalMode,
+    protectSensitiveSites,
+    grantsAlways,
+    pendingApprovals: pendingApprovalsList,
     history,
     live,
     liveMedia: live ? Object.fromEntries([...media].filter(([cid]) => liveHasCorrelation(cid))) : {},
@@ -652,6 +780,8 @@ chrome.runtime.onConnect.addListener((port) => {
     if (msg.type === "chat_message") {
       await storageInitPromise;
       onPanelChatMessage(msg);
+    } else if (msg.type === "reset_link") {
+      sendToBridge({ type: "reset_link" });
     } else if (msg.type === "user_action") {
       if (msg.action === "stop") {
         if (live) live.phase = "stopping";
@@ -690,6 +820,30 @@ chrome.runtime.onConnect.addListener((port) => {
       notifyPanels(logStateMessage());
     } else if (msg.type === "get_bridge_log") {
       if (!sendToBridge({ type: "get_bridge_log" })) port.postMessage({ type: "bridge_log", lines: ["Bridge is not connected."] });
+    } else if (msg.type === "set_approval_mode") {
+      const mode = msg.mode;
+      if (mode === MODES.MANUAL || mode === MODES.AUTO) {
+        approvalMode = mode;
+        await chrome.storage.local.set({ approvalMode: mode });
+        notifyPanels(stateSync());
+      }
+    } else if (msg.type === "revoke_site") {
+      const host = typeof msg.host === "string" ? msg.host.toLowerCase().replace(/\.+$/, "") : "";
+      if (host) {
+        grantsAlways = grantsAlways.filter((h) => h.toLowerCase().replace(/\.+$/, "") !== host);
+        await chrome.storage.local.set({ siteGrants: grantsAlways });
+        grantsSession = grantsSession.filter((h) => h.toLowerCase().replace(/\.+$/, "") !== host);
+        await chrome.storage.session.set({ sessionGrants: grantsSession });
+        notifyPanels(stateSync());
+      }
+    } else if (msg.type === "approval_response") {
+      const allowedDecisions = ["allow_once", "allow_session", "allow_always", "deny"];
+      if (msg.id && allowedDecisions.includes(msg.decision)) {
+        const pending = pendingApprovals.get(msg.id);
+        if (pending) {
+          pending.resolve(msg.decision);
+        }
+      }
     }
   });
 
@@ -697,6 +851,11 @@ chrome.runtime.onConnect.addListener((port) => {
     const p = panels.get(port);
     panels.delete(port);
     logEvent("background", "panel_disconnected", { tabId: p?.tabId });
+    if (panels.size === 0) {
+      for (const pending of [...pendingApprovals.values()]) {
+        pending.resolve("deny");
+      }
+    }
   });
 });
 
@@ -752,6 +911,22 @@ function onPanelChatMessage(msg) {
   if (msg.tab && msg.tab.id) {
     ensureTabInGroup(msg.tab.id);
     if (!live || live.phase === "done") turnOrigin = { tabId: msg.tab.id, agentTab: null };
+  }
+  if (msg.tab && msg.tab.url) {
+    const chatHost = hostOf(msg.tab.url);
+    if (chatHost) {
+      const s = {
+        protectSensitiveSites,
+        allowedProtectedHosts,
+        userBlocklist: blocklistDomains,
+      };
+      if (!isProtectedHost(chatHost, s) && !isUserBlocked(chatHost, s)) {
+        if (!grantsSession.includes(chatHost)) {
+          grantsSession.push(chatHost);
+          chrome.storage.session.set({ sessionGrants: grantsSession }).catch(() => {});
+        }
+      }
+    }
   }
   // A new request gets its own turn in the panel unless the agent is mid-task (then it rides along).
   if (!entry.queued && (!live || live.final || live.phase === "done")) {
@@ -831,6 +1006,8 @@ async function handleServerMessage(msg) {
       bridgeVersion = msg.bridgeVersion || "3.x";
       isListeningState = Boolean(msg.listening);
       authFailed = false;
+      pairingRequired = false;
+      notifyPanels({ type: "pairing_state", required: false });
       logEvent("background", "ws_connected", {
         bridgeVersion,
         build: BUILD,
@@ -845,11 +1022,26 @@ async function handleServerMessage(msg) {
       return;
     }
 
-    case "auth_error":
+    case "auth_error": {
       authFailed = true;
+      if (msg.code === "pairing_required" || msg.code === "invalid_token") {
+        const bundled = await loadBundledKey();
+        if (bundled && bundled !== currentToken) {
+          currentToken = bundled;
+          pairingRequired = false;
+          authFailed = false;
+          await chrome.storage.local.set({ pairingToken: bundled });
+          dropSocket();
+          connectNow("bundled_key_reconnect");
+          return;
+        }
+        pairingRequired = true;
+        notifyPanels({ type: "pairing_state", required: true, reason: msg.code });
+      }
       logEvent("bridge", "auth_error", { error: msg.error });
       notifyPanels({ type: "auth_error", error: msg.error });
       return;
+    }
 
     case "listening_state":
       isListeningState = Boolean(msg.listening);
@@ -1238,6 +1430,73 @@ function keyInfoFor(name) {
 // ---------------------------------------------------------------------------
 const NO_PAGE_ACCESS = new Set(["tabs_list", "tabs_create", "tabs_close", "tabs_activate", "navigate", "wait"]);
 
+async function requestApproval({ correlationId, code, host, tool, params, element, tab }) {
+  if (panels.size === 0) {
+    logEvent("background", "approval_denied_no_panel", { code, host, tool });
+    return "deny";
+  }
+
+  const id = `appr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  let detail = null;
+  if (tool === "execute_javascript" || code === "run_script") {
+    detail = String(params?.code || "").slice(0, 300);
+  } else if (tool === "upload_file" || code === "upload") {
+    const paths = Array.isArray(params?.paths) ? params.paths : [];
+    detail = paths.map((p) => String(p).split(/[\\/]/).pop()).join(", ");
+  } else if (tool === "navigate") {
+    detail = String(params?.url || "");
+  }
+
+  const tabTitle = tab?.title || "";
+  let target = element?.name || null;
+  if (code === "risky_click" && tool === "press_key") {
+    const formName = element?.formSubmitName ? element.formSubmitName : "the form";
+    target = `Enter, which submits the form (${formName})`;
+  }
+
+  sendToBridge({ type: "command_hold", correlationId, holdMs: 130000 });
+  notifyPanels({
+    type: "approval_request",
+    id,
+    code,
+    host,
+    tool,
+    target,
+    tabTitle,
+    detail,
+  });
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    const finish = (decision) => {
+      if (resolved) return;
+      resolved = true;
+      if (timer) clearTimeout(timer);
+      pendingApprovals.delete(id);
+      notifyPanels({ type: "approval_resolved", id });
+      resolve(decision);
+    };
+
+    const timer = setTimeout(() => {
+      logEvent("background", "approval_timeout", { id, code, host, tool });
+      finish("deny");
+    }, 120000);
+
+    pendingApprovals.set(id, {
+      id,
+      code,
+      host,
+      tool,
+      target,
+      tabTitle,
+      detail,
+      correlationId,
+      resolve: finish,
+      timer,
+    });
+  });
+}
+
 async function executeBrowserCommand(correlationId, tool, params) {
   const startTime = Date.now();
   logEvent("background", "browser_command_start", { tool, correlationId });
@@ -1247,17 +1506,143 @@ async function executeBrowserCommand(correlationId, tool, params) {
   }
   try {
     const tabId = params.tabId;
+    let targetTab = null;
+    let tabObj = null;
+
     if (tabId) {
       currentTaskTabId = tabId;
-      const tab = await chrome.tabs.get(tabId);
+      try {
+        tabObj = await chrome.tabs.get(tabId);
+      } catch (err) {
+        if (!NO_PAGE_ACCESS.has(tool)) {
+          throw new Error(`Could not access tab ${tabId}: ${err.message}`);
+        }
+      }
       if (!NO_PAGE_ACCESS.has(tool)) {
-        if (isRestrictedUrl(tab.url)) {
-          logEvent("background", "restricted_url_blocked", { url: tab.url, tool });
+        if (!tabObj || !tabObj.url) {
+          throw new Error(`Could not access tab ${tabId} or tab has no URL.`);
+        }
+        if (isRestrictedUrl(tabObj.url)) {
+          logEvent("background", "restricted_url_blocked", { url: tabObj.url, tool });
           throw new Error(
-            `This tab shows a browser page (${tab.url}) that extensions cannot read or control. Use navigate on this same tab to open a website first.`
+            `This tab shows a browser page (${tabObj.url}) that extensions cannot read or control. Use navigate on this same tab to open a website first.`
           );
         }
-        if (isDomainBlocked(tab.url)) throw new Error(`The user blocked ${new URL(tab.url).hostname} in the extension settings.`);
+        if (isDomainBlocked(tabObj.url)) throw new Error(`The user blocked ${new URL(tabObj.url).hostname} in the extension settings.`);
+      }
+      if (tabObj) {
+        const groupId = await getAntigravityGroup();
+        const isAgentTab = tabObj.groupId !== undefined && tabObj.groupId !== -1 && tabObj.groupId === groupId;
+        const isPanelTab = panelOpenOn(tabObj.id);
+        targetTab = {
+          id: tabObj.id,
+          url: tabObj.url,
+          title: tabObj.title,
+          isAgentTab,
+          isPanelTab,
+        };
+      }
+    } else {
+      if (!NO_PAGE_ACCESS.has(tool)) {
+        throw new Error(`Tool ${tool} requires a tabId.`);
+      }
+    }
+
+    let targetElement = null;
+    const hasPoint = Number.isFinite(params.x) && Number.isFinite(params.y);
+    if (tabId && ["click", "type", "form_input", "hover"].includes(tool) && params.ref) {
+      try {
+        targetElement = await runInPage(tabId, describeRefScript, [params.ref]);
+      } catch {}
+    } else if (tabId && ["click", "hover"].includes(tool) && hasPoint) {
+      try {
+        targetElement = await runInPage(tabId, describePointScript, [params.x, params.y]);
+      } catch {}
+    } else if (tabId && tool === "press_key") {
+      try {
+        targetElement = await runInPage(tabId, activeElementScript, []);
+      } catch {}
+    }
+    // Fail closed: an action that depends on knowing the element must not run when the element cannot be inspected.
+    const needsElement = Boolean(tabId) && (tool === "press_key" || (["click", "type", "form_input"].includes(tool) && (params.ref || hasPoint)));
+    if (needsElement && !targetElement) {
+      throw new Error("Could not inspect the target element, so the action was not performed. Try again.");
+    }
+
+    const evalResult = evaluateAction({
+      tool,
+      params,
+      mode: approvalMode,
+      settings: {
+        approvalMode,
+        protectSensitiveSites,
+        allowedProtectedHosts,
+        userBlocklist: blocklistDomains,
+      },
+      grants: {
+        always: grantsAlways,
+        session: grantsSession,
+      },
+      tab: targetTab,
+      element: targetElement,
+    });
+
+    if (evalResult.decision === "block") {
+      if (evalResult.code === "protected_site") {
+        throw new Error(
+          `Access to ${evalResult.host || "this site"} is blocked: the site is on the protected list. The user can change this in the MyChrome settings.`
+        );
+      }
+      if (evalResult.code === "sensitive_field") {
+        throw new Error(
+          "Interaction blocked: password and card fields can only be filled by the user. Ask the user to fill them."
+        );
+      }
+      if (evalResult.code === "uninspectable_frame") {
+        throw new Error(
+          "Keys cannot be sent into an embedded frame that MyChrome cannot inspect, it may hold a password or card field. Ask the user to fill it."
+        );
+      }
+      if (evalResult.code === "unknown_tool") {
+        throw new Error("This tool is not supported by this version of MyChrome.");
+      }
+      if (evalResult.code === "unsupported_url") {
+        throw new Error("Action blocked: only http and https addresses can be opened by the agent.");
+      }
+      throw new Error(evalResult.reason || "Action blocked by safety policy.");
+    }
+
+    if (evalResult.decision === "ask") {
+      const decision = await requestApproval({
+        correlationId,
+        code: evalResult.code,
+        host: evalResult.host,
+        tool,
+        params,
+        element: targetElement,
+        tab: targetTab,
+      });
+
+      if (decision === "allow_session") {
+        if (evalResult.host && !grantsSession.includes(evalResult.host)) {
+          grantsSession.push(evalResult.host);
+          await chrome.storage.session.set({ sessionGrants: grantsSession });
+        }
+      } else if (decision === "allow_always") {
+        if (evalResult.host) {
+          if (!grantsAlways.includes(evalResult.host)) {
+            grantsAlways.push(evalResult.host);
+            await chrome.storage.local.set({ siteGrants: grantsAlways });
+          }
+          if (!grantsSession.includes(evalResult.host)) {
+            grantsSession.push(evalResult.host);
+            await chrome.storage.session.set({ sessionGrants: grantsSession });
+          }
+        }
+      } else if (decision === "allow_once") {
+        // allow this call
+      } else {
+        throw new Error("The user denied this action. Do not retry it; ask the user how to proceed.");
       }
     }
 
@@ -1267,7 +1652,7 @@ async function executeBrowserCommand(correlationId, tool, params) {
       const tabs = await chrome.tabs.query({});
       const groupId = await getAntigravityGroup();
       const panelTabs = new Set([...panels.values()].map((p) => p.tabId));
-      result = tabs.map((t) => ({
+      const rawTabs = tabs.map((t) => ({
         id: t.id,
         url: t.url,
         title: t.title,
@@ -1276,6 +1661,19 @@ async function executeBrowserCommand(correlationId, tool, params) {
         inAntigravityGroup: t.groupId === groupId,
         hasSidePanel: panelTabs.has(t.id),
       }));
+      result = redactTabs(rawTabs, {
+        mode: approvalMode,
+        settings: {
+          approvalMode,
+          protectSensitiveSites,
+          allowedProtectedHosts,
+          userBlocklist: blocklistDomains,
+        },
+        grants: {
+          always: grantsAlways,
+          session: grantsSession,
+        },
+      });
     } else if (tool === "tabs_create") {
       let url = params.url || "about:blank";
       if (url && !url.includes("://") && !url.startsWith("about:")) url = "https://" + url;

@@ -23,14 +23,28 @@ const BRIDGE_ROOT = path.resolve(__dirname, "..");
 const PORT = parseInt(process.env.BRIDGE_PORT || "8765", 10);
 const BASE = `http://127.0.0.1:${PORT}`;
 const JOB_TIMEOUT_MS = 20000;
+const NEW_CONV_TIMEOUT_MS = 60000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-interface WakeJob {
+interface SendMessageJob {
   jobId: string;
+  kind?: "send_message";
   action: "send-message";
   conversationId: string;
   prompt: string;
   safePrompt: string;
 }
+
+interface NewConversationJob {
+  jobId: string;
+  kind: "new_conversation";
+  title: string;
+  prompt: string;
+  safePrompt?: string;
+  projectId: string;
+}
+
+type WakeJob = SendMessageJob | NewConversationJob;
 
 interface AgentApi {
   bin: string;
@@ -96,7 +110,7 @@ export function resolveAgentApi(): AgentApi | null {
   return null;
 }
 
-function runAgentApi(api: AgentApi, job: WakeJob): Promise<{ ok: boolean; error?: string; usedSafePrompt: boolean }> {
+function runAgentApi(api: AgentApi, job: SendMessageJob): Promise<{ ok: boolean; error?: string; usedSafePrompt: boolean }> {
   return new Promise((resolve) => {
     // With a shell shim we only pass a fixed ASCII prompt; the agent then reads the real text
     // with read_panel_messages. This keeps user text away from cmd.exe parsing.
@@ -125,6 +139,62 @@ function runAgentApi(api: AgentApi, job: WakeJob): Promise<{ ok: boolean; error?
       clearTimeout(timer);
       if (code === 0) {
         resolve({ ok: true, usedSafePrompt: useSafe });
+      } else {
+        const detail = (stderr || stdout).trim().slice(0, 400);
+        resolve({ ok: false, error: `agentapi exited with code ${code}${detail ? `: ${detail}` : ""}`, usedSafePrompt: useSafe });
+      }
+    });
+  });
+}
+
+function runAgentApiNewConversation(
+  api: AgentApi,
+  job: NewConversationJob
+): Promise<{ ok: boolean; conversationId?: string; error?: string; usedSafePrompt: boolean }> {
+  return new Promise((resolve) => {
+    const useSafe = api.needsShell;
+    const rawPrompt = useSafe && job.safePrompt ? job.safePrompt : job.prompt;
+    const prompt = useSafe ? rawPrompt.replace(/[^A-Za-z0-9 .,_']/g, " ") : job.prompt;
+    const title = job.title || "MyChrome";
+    const args = ["new-conversation", `--title=${title}`, prompt];
+
+    const env = { ...process.env };
+    if (!env.ANTIGRAVITY_PROJECT_ID && job.projectId) {
+      env.ANTIGRAVITY_PROJECT_ID = job.projectId;
+    }
+
+    const child = useSafe
+      ? spawn(`"${api.bin}"`, args.map((a) => `"${a}"`), { shell: true, windowsHide: true, env })
+      : spawn(api.bin, args, { shell: false, windowsHide: true, env });
+
+    let stderr = "";
+    let stdout = "";
+    child.stdout?.on("data", (d) => (stdout += d.toString()));
+    child.stderr?.on("data", (d) => (stderr += d.toString()));
+
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, error: "agentapi timed out", usedSafePrompt: useSafe });
+    }, NEW_CONV_TIMEOUT_MS);
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({ ok: false, error: `agentapi could not start: ${err.message}`, usedSafePrompt: useSafe });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        try {
+          const parsed = JSON.parse(stdout);
+          const cid = parsed?.response?.newConversation?.conversationId;
+          if (typeof cid === "string" && UUID_RE.test(cid)) {
+            resolve({ ok: true, conversationId: cid, usedSafePrompt: useSafe });
+          } else {
+            resolve({ ok: false, error: "Invalid or missing conversationId in agentapi response", usedSafePrompt: useSafe });
+          }
+        } catch {
+          resolve({ ok: false, error: "Failed to parse agentapi JSON response", usedSafePrompt: useSafe });
+        }
       } else {
         const detail = (stderr || stdout).trim().slice(0, 400);
         resolve({ ok: false, error: `agentapi exited with code ${code}${detail ? `: ${detail}` : ""}`, usedSafePrompt: useSafe });
@@ -198,7 +268,17 @@ export async function runWaker(): Promise<void> {
     } catch {
       continue;
     }
-    if (!job || job.action !== "send-message" || !job.conversationId) continue;
+    if (!job) continue;
+
+    if (job.kind === "new_conversation") {
+      log(`Starting new conversation for ${job.jobId} (title: ${job.title})`);
+      const result = await runAgentApiNewConversation(api, job);
+      log(result.ok ? `Started ${job.jobId} -> ${result.conversationId ? result.conversationId.slice(0, 8) : ""}` : `Failed ${job.jobId}: ${result.error}`);
+      await postResult(token, { jobId: job.jobId, ...result });
+      continue;
+    }
+
+    if (job.action !== "send-message" || !job.conversationId) continue;
 
     log(`Delivering ${job.jobId} to conversation ${job.conversationId}`);
     const result = await runAgentApi(api, job);

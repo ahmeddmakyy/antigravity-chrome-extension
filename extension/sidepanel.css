@@ -137,7 +137,7 @@ button { font: inherit; color: inherit; }
   animation: breathe 2.4s ease-in-out infinite;
 }
 .status-pill[data-state="offline"] { --dot: var(--pink-ink); }
-.status-pill[data-state="setup"], .status-pill[data-state="unlinked"] { --dot: var(--peach-ink); }
+.status-pill[data-state="setup"], .status-pill[data-state="unlinked"], .status-pill[data-state="pairing"] { --dot: var(--peach-ink); }
 .status-pill[data-state="asleep"] { --dot: var(--lilac-ink); }
 .status-pill[data-state="working"] .status-dot { background: conic-gradient(from var(--spin), #FFB23E, #B892FF, #5EEAD4, #FFB23E); animation: spinVar 1.2s linear infinite; }
 
@@ -152,6 +152,12 @@ button { font: inherit; color: inherit; }
 .popover-head h2 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; flex: 1; }
 .popover-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dot, var(--text-3)); flex: none; }
 .popover-body { margin: 0 0 12px; color: var(--text-2); font-size: 13px; line-height: 1.55; }
+.popover-link-meta {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: -4px 0 12px; padding: 8px 10px; background: var(--surface-2); border-radius: 12px;
+}
+.popover-link-text { font-size: 12px; color: var(--text-2); line-height: 1.4; margin: 0; flex: 1; }
+.popover-link-meta .pill-btn { flex: none; }
 .popover-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 
 .checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -207,6 +213,18 @@ html[lang="ar"] .s-title { letter-spacing: 0; line-height: 1.5; }
 .setup-card h3 { margin: 2px 0 4px; font-size: 14px; font-weight: 600; }
 .setup-card p { margin: 0 0 10px; color: var(--text-2); font-size: 12.5px; }
 .setup-text { flex: 1; min-width: 0; }
+
+.pairing-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 22px; padding: 14px;
+  display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; animation: fadeUp 0.5s var(--ease) both;
+}
+.pairing-card .circle { background: var(--peach); color: var(--peach-ink); flex: none; }
+.pairing-card h3 { margin: 2px 0 4px; font-size: 14px; font-weight: 600; color: var(--text); }
+.pairing-card p { margin: 0 0 10px; color: var(--text-2); font-size: 12.5px; line-height: 1.5; }
+.pairing-text { flex: 1; min-width: 0; }
+.pairing-hints { margin: 0 0 12px; padding-inline-start: 20px; color: var(--text-2); font-size: 12.5px; line-height: 1.5; }
+.pairing-hints li { margin-bottom: 4px; }
+.pairing-hints li:last-child { margin-bottom: 0; }
 
 
 /* ---------- Thread ---------- */
@@ -405,6 +423,19 @@ html[lang="ar"] .s-title { letter-spacing: 0; line-height: 1.5; }
 .card-body { font-size: 13.5px; color: var(--text); white-space: pre-wrap; }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .card.done { opacity: 0.6; pointer-events: none; }
+.card.approval-card { border-inline-start: 3px solid var(--peach-ink); }
+.approval-code {
+  margin: 0; padding: 8px 10px; border-radius: 8px;
+  background: var(--code-bg); border: 1px solid var(--line);
+  font: 12px/1.4 var(--mono); color: var(--text);
+  overflow-x: auto; max-height: 120px; direction: ltr; text-align: left;
+  white-space: pre-wrap; word-break: break-all;
+}
+.approval-files {
+  font: 12px var(--mono); color: var(--text-2);
+  background: var(--surface-2); padding: 6px 10px; border-radius: 8px;
+  word-break: break-all;
+}
 
 /* ---------- Buttons ---------- */
 .solid-btn, .ghost-btn, .pill-btn {
@@ -519,6 +550,32 @@ html[lang="ar"] .s-title { letter-spacing: 0; line-height: 1.5; }
 }
 .attach-menu-item:hover { background: var(--surface-2); }
 .attach-menu-item .ic { width: 16px; height: 16px; color: var(--text-2); flex: none; }
+.mode-wrap { position: relative; }
+.mode-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 5px; height: 30px; min-width: 30px; padding: 0 6px;
+  border-radius: 9px; border: 0; background: none; color: var(--text-2);
+  cursor: pointer; flex: none; font-size: 11.5px; font-weight: 600;
+  transition: background-color 0.2s, color 0.2s, transform 0.18s var(--spring);
+}
+.mode-btn:hover { background: var(--surface-2); }
+.mode-btn:active { transform: scale(0.92); }
+.mode-btn .ic { width: 16px; height: 16px; }
+.mode-btn.is-auto {
+  background: var(--peach); color: var(--peach-ink);
+  padding: 0 8px;
+}
+.mode-btn.is-auto:hover { background: var(--peach); opacity: 0.9; }
+@media (max-width: 300px) {
+  .mode-btn.is-auto { padding: 0; width: 30px; }
+  .mode-btn .mode-btn-label { display: none; }
+}
+.mode-check {
+  margin-inline-start: auto; width: 16px; height: 16px; color: var(--text-3); flex: none;
+}
+.attach-menu-item[aria-checked="true"] .mode-check {
+  color: var(--text);
+}
 
 /* Attachment tray above input */
 .attachment-tray { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px 8px; }
@@ -654,6 +711,15 @@ html[data-theme="dark"] .switch:checked::after { background: var(--ink-text); }
 .field input, .field textarea { font: inherit; font-size: 13.5px; color: var(--text); background: var(--surface-2); border: 1px solid transparent; border-radius: 14px; padding: 10px 12px; outline: none; resize: vertical; transition: border-color 0.2s, background-color 0.2s; }
 .field input:focus, .field textarea:focus { border-color: var(--line-strong); background: var(--surface); }
 .field small { font-size: 11.5px; color: var(--text-3); }
+.grants-wrap { display: flex; flex-direction: column; gap: 6px; }
+.grants-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.grant-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 10px; background: var(--surface-2); border-radius: 10px; font-size: 13px;
+}
+.grant-host { font: 12px var(--mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grants-empty { margin: 2px 0 0; font-size: 12px; color: var(--text-3); font-style: italic; }
+.grant-revoke-btn { padding: 4px 10px; font-size: 11.5px; height: auto; min-height: 24px; border-radius: 8px; }
 .version { text-align: center; font-size: 11.5px; color: var(--text-3); margin: 6px 0 0; }
 
 /* Log viewer */

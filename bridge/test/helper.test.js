@@ -1,3 +1,4 @@
+import { TEST_ROOT, writeTestToken } from "./setup.js";
 // v5.2: the long-lived helper owns port 8765; MCP processes call it over /rpc.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -18,6 +19,7 @@ let portSeq = 9970;
 async function makeServer(opts = {}) {
   const port = portSeq++;
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "mychrome-helper-"));
+  writeTestToken(TOKEN);
   fs.writeFileSync(path.join(stateDir, ".token"), TOKEN);
   const server = new BridgeWSServer(port, TOKEN, new Logger(path.join(stateDir, "logs")), { stateDir, holdSeconds: 0, ...opts });
   await server.start();
@@ -27,13 +29,16 @@ async function makeServer(opts = {}) {
 function fakeExtension(port, results = {}) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`, { headers: { Origin: EXTENSION_ORIGIN } });
-    ws.on("open", () => ws.send(JSON.stringify({ type: "auth", extensionVersion: "test" })));
+    ws.on("open", () => ws.send(JSON.stringify({ type: "auth", token: TOKEN, extensionVersion: "test" })));
     ws.on("message", (raw) => {
       const m = JSON.parse(raw.toString());
       if (m.type === "auth_ok") resolve(ws);
       if (m.type === "browser_command") ws.send(JSON.stringify({ type: "browser_command_result", correlationId: m.correlationId, result: results[m.tool] ?? { ok: true } }));
     });
-    ws.on("error", reject);
+    ws.on("error", (err) => {
+      ws.close();
+      reject(err);
+    });
   });
 }
 
@@ -47,34 +52,42 @@ describe("v5.2 helper and RPC", { concurrency: 1 }, () => {
 
   test("ping, /connected and the /connect page need no token", async () => {
     const { server, port } = await makeServer();
-    assert.equal(await pingHelper(port), true);
-    let j = await (await fetch(`http://127.0.0.1:${port}/connected`)).json();
-    assert.equal(j.connected, false);
-    const html = await (await fetch(`http://127.0.0.1:${port}/connect`)).text();
-    assert.match(html, /mychrome_wake/);
-    const ext = await fakeExtension(port);
-    j = await (await fetch(`http://127.0.0.1:${port}/connected`)).json();
-    assert.equal(j.connected, true);
-    ext.close();
-    await server.stop();
+    let ext = null;
+    try {
+      assert.equal(await pingHelper(port), true);
+      let j = await (await fetch(`http://127.0.0.1:${port}/connected`)).json();
+      assert.equal(j.connected, false);
+      const html = await (await fetch(`http://127.0.0.1:${port}/connect`)).text();
+      assert.match(html, /mychrome_wake/);
+      ext = await fakeExtension(port);
+      j = await (await fetch(`http://127.0.0.1:${port}/connected`)).json();
+      assert.equal(j.connected, true);
+    } finally {
+      if (ext) ext.close();
+      await server.stop();
+    }
   });
 
   test("RemoteBridge forwards tool calls, and /rpc rejects bad tokens and unknown methods", async () => {
     const { server, port, stateDir } = await makeServer();
-    const ext = await fakeExtension(port, { click: { clicked: { x: 1, y: 2 }, target: "Save" } });
-    const remote = new RemoteBridge(port, stateDir);
-    const r = await remote.executeBrowserCommand("click", { tabId: 1, ref: "e1" }, 5000, "Clicking save");
-    assert.equal(r.target, "Save");
-    const status = await remote.getAgentStatus();
-    assert.equal(typeof status.busy, "boolean");
-    const read = await remote.readPanelMessages();
-    assert.ok(read.screenshots instanceof Map);
-    const bad = await fetch(`http://127.0.0.1:${port}/rpc`, { method: "POST", headers: { "x-bridge-token": "nope", "Content-Type": "application/json" }, body: JSON.stringify({ method: "getAgentStatus", args: [] }) });
-    assert.equal(bad.status, 403);
-    const unknown = await fetch(`http://127.0.0.1:${port}/rpc`, { method: "POST", headers: { "x-bridge-token": TOKEN, "Content-Type": "application/json" }, body: JSON.stringify({ method: "stop", args: [] }) });
-    assert.equal(unknown.status, 400);
-    ext.close();
-    await server.stop();
+    let ext = null;
+    try {
+      ext = await fakeExtension(port, { click: { clicked: { x: 1, y: 2 }, target: "Save" } });
+      const remote = new RemoteBridge(port, stateDir);
+      const r = await remote.executeBrowserCommand("click", { tabId: 1, ref: "e1" }, 5000, "Clicking save");
+      assert.equal(r.target, "Save");
+      const status = await remote.getAgentStatus();
+      assert.equal(typeof status.busy, "boolean");
+      const read = await remote.readPanelMessages();
+      assert.ok(read.screenshots instanceof Map);
+      const bad = await fetch(`http://127.0.0.1:${port}/rpc`, { method: "POST", headers: { "x-bridge-token": "nope", "Content-Type": "application/json" }, body: JSON.stringify({ method: "getAgentStatus", args: [] }) });
+      assert.equal(bad.status, 403);
+      const unknown = await fetch(`http://127.0.0.1:${port}/rpc`, { method: "POST", headers: { "x-bridge-token": TOKEN, "Content-Type": "application/json" }, body: JSON.stringify({ method: "stop", args: [] }) });
+      assert.equal(unknown.status, 400);
+    } finally {
+      if (ext) ext.close();
+      await server.stop();
+    }
   });
 
   test("ensureExtension opens Chrome at the connect page and waits for the extension", async () => {
@@ -87,13 +100,16 @@ describe("v5.2 helper and RPC", { concurrency: 1 }, () => {
         return true;
       },
     });
-    const r = await server.ensureExtension(5000);
-    assert.equal(opened, `http://127.0.0.1:${port}/connect`);
-    assert.deepEqual(r, { connected: true, launched: true });
-    const again = await server.ensureExtension(5000);
-    assert.deepEqual(again, { connected: true, launched: false });
-    extWs.close();
-    await server.stop();
+    try {
+      const r = await server.ensureExtension(5000);
+      assert.equal(opened, `http://127.0.0.1:${port}/connect`);
+      assert.deepEqual(r, { connected: true, launched: true });
+      const again = await server.ensureExtension(5000);
+      assert.deepEqual(again, { connected: true, launched: false });
+    } finally {
+      if (extWs) extWs.close();
+      await server.stop();
+    }
   });
 
   test("a browser tool waits for Chrome instead of failing at once", async () => {
@@ -104,10 +120,13 @@ describe("v5.2 helper and RPC", { concurrency: 1 }, () => {
         return true;
       },
     });
-    const res = await server.executeBrowserCommand("tabs_list", {}, 5000);
-    assert.deepEqual(res, [{ id: 5 }]);
-    extWs.close();
-    await server.stop();
+    try {
+      const res = await server.executeBrowserCommand("tabs_list", {}, 5000);
+      assert.deepEqual(res, [{ id: 5 }]);
+    } finally {
+      if (extWs) extWs.close();
+      await server.stop();
+    }
   });
 
   test("the waker finds agentapi in ~/.gemini/antigravity/bin even when it is not on PATH", () => {
@@ -130,6 +149,9 @@ describe("v5.2 helper and RPC", { concurrency: 1 }, () => {
         if (v === undefined) delete process.env[k];
         else process.env[k] = v;
       }
+      try {
+        fs.rmSync(home, { recursive: true, force: true });
+      } catch {}
     }
   });
 });

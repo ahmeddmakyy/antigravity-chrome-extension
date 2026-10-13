@@ -64,6 +64,9 @@ const ICONS = {
   instagram: '<rect width="20" height="20" x="2" y="2" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><circle cx="17.5" cy="6.5" r="1.2"/>',
   telegram: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
   github: '<path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/>',
+  key: '<path d="m21 2-2 2m-1.5 1.5L14 9a5 5 0 1 0 3 3l3.5-3.5M19 5l2 2"/>',
+  "fast-forward": '<polygon points="13 19 22 12 13 5"/><polygon points="2 19 11 12 2 5"/>',
+  lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
 };
 
 function icon(name, cls = "") {
@@ -76,7 +79,7 @@ function hydrateIcons(root = document) {
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-const PANEL_BUILD = "5.2.0";
+const PANEL_BUILD = "5.3.0";
 const QUIET_AFTER_MS = 90000;
 
 const params = new URLSearchParams(location.search);
@@ -91,6 +94,7 @@ const state = {
   port: null,
   connected: false,
   listening: false,
+  pairingRequired: false,
   agentStatus: null,
   taskState: "idle",
   taskLabel: "",
@@ -109,6 +113,9 @@ const state = {
   bridgeLines: [],
   waiters: new Map(),
   synced: false,
+  approvalMode: "manual",
+  protectSensitiveSites: true,
+  siteGrants: [],
 };
 
 const SUGGESTIONS = [
@@ -1391,6 +1398,187 @@ function renderQuestion(q) {
   scrollToEnd(true);
 }
 
+function renderApprovalCard(req) {
+  if (!req || !req.id) return;
+  const existing = document.querySelector(`.card[data-appr-id="${CSS.escape(req.id)}"]`);
+  if (existing) existing.remove();
+
+  const card = document.createElement("div");
+  card.className = "card approval-card";
+  card.dataset.apprId = req.id;
+  card.dataset.kind = "confirm";
+
+  // Raw values go into t() and are escaped once, when the final string is put into the template.
+  const host = String(req.host || "");
+  const target = String(req.target || t("approvalTargetFallback"));
+  const tabTitle = String(req.tabTitle || t("approvalTabFallback"));
+  const detail = esc(String(req.detail || "").slice(0, 300));
+
+  let bodyHtml = "";
+  let buttons = [];
+
+  switch (req.code) {
+    case "site_access":
+      bodyHtml = `<div class="card-body" dir="auto">${esc(t("approvalSiteTitle", { host }))}</div>`;
+      buttons = [
+        { label: t("approvalAllowSession"), action: "allow_session", cls: "solid-btn" },
+        { label: t("approvalAllowAlways"), action: "allow_always", cls: "ghost-btn" },
+        { label: t("approvalDeny"), action: "deny", cls: "ghost-btn" },
+      ];
+      break;
+    case "risky_click":
+      bodyHtml = `<div class="card-body" dir="auto">${esc(t("approvalClickTitle", { target, host }))}</div>`;
+      buttons = [
+        { label: t("approvalAllowOnce"), action: "allow_once", cls: "solid-btn" },
+        { label: t("approvalDeny"), action: "deny", cls: "ghost-btn" },
+      ];
+      break;
+    case "run_script":
+      bodyHtml = `<div class="card-body" dir="auto">${esc(t("approvalScriptTitle", { host }))}</div>` +
+        `<pre class="approval-code" dir="ltr"><code>${detail}</code></pre>`;
+      buttons = [
+        { label: t("approvalAllowOnce"), action: "allow_once", cls: "solid-btn" },
+        { label: t("approvalDeny"), action: "deny", cls: "ghost-btn" },
+      ];
+      break;
+    case "upload":
+      bodyHtml = `<div class="card-body" dir="auto">${esc(t("approvalUploadTitle", { host }))}</div>` +
+        `<div class="approval-files" dir="auto">${detail}</div>`;
+      buttons = [
+        { label: t("approvalAllowOnce"), action: "allow_once", cls: "solid-btn" },
+        { label: t("approvalDeny"), action: "deny", cls: "ghost-btn" },
+      ];
+      break;
+    case "close_tab":
+      bodyHtml = `<div class="card-body" dir="auto">${esc(t("approvalCloseTabTitle", { tabTitle }))}</div>`;
+      buttons = [
+        { label: t("approvalAllowOnce"), action: "allow_once", cls: "solid-btn" },
+        { label: t("approvalDeny"), action: "deny", cls: "ghost-btn" },
+      ];
+      break;
+    default:
+      bodyHtml = `<div class="card-body" dir="auto">${esc(t("confirmationTitle"))}</div>`;
+      buttons = [
+        { label: t("approvalAllowOnce"), action: "allow_once", cls: "solid-btn" },
+        { label: t("approvalDeny"), action: "deny", cls: "ghost-btn" },
+      ];
+      break;
+  }
+
+  const btnHtml = buttons
+    .map(
+      (b) =>
+        `<button type="button" class="${esc(b.cls)}" data-decision="${esc(b.action)}">${esc(b.label)}</button>`
+    )
+    .join("");
+
+  card.innerHTML = `<div class="card-top"><span class="circle">${icon("shield")}</span><span class="card-title">${esc(t("confirmationTitle"))}</span></div>${bodyHtml}<div class="btn-row">${btnHtml}</div>`;
+
+  card.querySelectorAll("[data-decision]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const decision = b.dataset.decision;
+      state.port?.postMessage({ type: "approval_response", id: req.id, decision });
+      card.remove();
+    });
+  });
+
+  const hostEl = state.live ? state.live.el.querySelector(".segs") : ($("approvalContainer") || $("thread"));
+  hostEl.appendChild(card);
+  setPhase("waiting");
+  scrollToEnd(true);
+
+  const firstBtn = card.querySelector("button");
+  firstBtn?.focus();
+  card.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "nearest" });
+}
+
+function syncPendingApprovals(pendingList) {
+  if (!Array.isArray(pendingList)) return;
+  const currentIds = new Set(pendingList.map((p) => p.id));
+  document.querySelectorAll(".card[data-appr-id]").forEach((card) => {
+    if (!currentIds.has(card.dataset.apprId)) card.remove();
+  });
+  for (const p of pendingList) {
+    if (!document.querySelector(`.card[data-appr-id="${CSS.escape(p.id)}"]`)) {
+      renderApprovalCard(p);
+    }
+  }
+}
+
+function applyApprovalMode(mode) {
+  const isAuto = mode === "auto";
+  state.approvalMode = isAuto ? "auto" : "manual";
+  const btn = $("modeBtn");
+  if (btn) {
+    btn.classList.toggle("is-auto", isAuto);
+    const iconSpan = btn.querySelector(".mode-btn-icon");
+    if (iconSpan) iconSpan.innerHTML = icon(isAuto ? "fast-forward" : "hand");
+    const labelSpan = $("modeBtnLabel");
+    if (labelSpan) labelSpan.textContent = isAuto ? t("modeAutoShort") : "";
+  }
+  const manualItem = $("modeManualBtn");
+  const autoItem = $("modeAutoBtn");
+  if (manualItem && autoItem) {
+    manualItem.setAttribute("aria-checked", String(!isAuto));
+    autoItem.setAttribute("aria-checked", String(isAuto));
+    const manualCheck = manualItem.querySelector(".mode-check");
+    const autoCheck = autoItem.querySelector(".mode-check");
+    if (manualCheck) manualCheck.hidden = isAuto;
+    if (autoCheck) autoCheck.hidden = !isAuto;
+  }
+}
+
+function setManualApprovalMode() {
+  chrome.storage?.local?.set?.({ approvalMode: "manual" }, () => {
+    state.port?.postMessage({ type: "set_approval_mode", mode: "manual" });
+    applyApprovalMode("manual");
+  });
+}
+
+function requestAutoApprovalMode() {
+  chrome.storage?.local?.get?.(["autoApproveAck"], (res) => {
+    if (res?.autoApproveAck) {
+      chrome.storage?.local?.set?.({ approvalMode: "auto" }, () => {
+        state.port?.postMessage({ type: "set_approval_mode", mode: "auto" });
+        applyApprovalMode("auto");
+      });
+    } else {
+      openLayer("autoConfirmLayer");
+    }
+  });
+}
+
+function renderSiteGrants(grants = []) {
+  state.siteGrants = Array.isArray(grants) ? grants : [];
+  const list = $("grantsList");
+  const empty = $("grantsEmpty");
+  if (!list || !empty) return;
+  const hosts = state.siteGrants.filter(Boolean);
+  list.innerHTML = "";
+  if (hosts.length === 0) {
+    empty.hidden = false;
+    list.hidden = true;
+    return;
+  }
+  empty.hidden = true;
+  list.hidden = false;
+  for (const host of hosts) {
+    const li = document.createElement("li");
+    li.className = "grant-item";
+    li.innerHTML = `<span class="grant-host" dir="ltr">${esc(host)}</span><button type="button" class="ghost-btn compact grant-revoke-btn" data-host="${esc(host)}">${esc(t("grantsRevoke"))}</button>`;
+    li.querySelector("button")?.addEventListener("click", () => {
+      state.port?.postMessage({ type: "revoke_site", host });
+      li.remove();
+      state.siteGrants = state.siteGrants.filter((h) => h !== host);
+      if (!list.children.length) {
+        list.hidden = true;
+        empty.hidden = false;
+      }
+    });
+    list.appendChild(li);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Lightbox
 // ---------------------------------------------------------------------------
@@ -1528,6 +1716,7 @@ function onPortMessage(msg) {
       state.versions.bridge = msg.bridgeVersion || null;
       state.connected = Boolean(msg.connected);
       state.listening = Boolean(msg.listening);
+      state.pairingRequired = Boolean(msg.pairingRequired);
       state.agentStatus = msg.agentStatus;
       state.taskState = msg.taskState || "idle";
       state.taskLabel = msg.taskLabel || "";
@@ -1542,10 +1731,20 @@ function onPortMessage(msg) {
         mountLive(msg.live, { replay: true });
       }
       checkVersions();
+      if (msg.approvalMode) applyApprovalMode(msg.approvalMode);
+      if (typeof msg.protectSensitiveSites === "boolean" && $("protectSwitch")) {
+        $("protectSwitch").checked = msg.protectSensitiveSites;
+      }
+      if (Array.isArray(msg.grantsAlways)) renderSiteGrants(msg.grantsAlways);
+      if (Array.isArray(msg.pendingApprovals)) syncPendingApprovals(msg.pendingApprovals);
       renderLogState();
       renderStatus();
       break;
     }
+    case "pairing_state":
+      state.pairingRequired = Boolean(msg.required);
+      renderStatus();
+      break;
     case "connection":
       state.connected = Boolean(msg.connected);
       state.listening = Boolean(msg.listening);
@@ -1669,6 +1868,13 @@ function onPortMessage(msg) {
       document.querySelector(`.card[data-cid="${CSS.escape(msg.correlationId)}"]`)?.classList.add("done");
       if (state.live) setPhase("thinking");
       break;
+    case "approval_request":
+      renderApprovalCard(msg);
+      break;
+    case "approval_resolved":
+      document.querySelector(`.card[data-appr-id="${CSS.escape(msg.id)}"]`)?.remove();
+      if (state.live) setPhase("thinking");
+      break;
     case "system_note":
       if (msg.code === "linked") note(t("noteLinked"), "ok", "link");
       else if (msg.code === "queued_asleep" || msg.code === "queued_not_linked") {
@@ -1772,6 +1978,8 @@ function applyLanguage(lang) {
   renderTheme();
   renderStatus();
   renderLogState();
+  applyApprovalMode(state.approvalMode);
+  renderSiteGrants(state.siteGrants);
 }
 
 // ---------------------------------------------------------------------------
@@ -1808,7 +2016,17 @@ function isWorking() {
   return ["thinking", "acting", "waiting"].includes(state.taskState) && Boolean(state.agentStatus?.busy);
 }
 
+
+function clearPairingCard() {
+  const card = $("pairingCard");
+  if (card) {
+    card.hidden = true;
+    card.innerHTML = "";
+  }
+}
+
 function computeStatus() {
+  if (state.pairingRequired) return "pairing";
   if (!state.connected) return "offline";
   if (isWorking()) return "working";
   if (state.listening) return "ready";
@@ -1820,8 +2038,8 @@ function computeStatus() {
   return "asleep";
 }
 
-const STATUS_TEXT = { offline: "statusOffline", working: "statusWorking", ready: "statusReady", setup: "statusSetup", unlinked: "statusUnlinked", asleep: "statusAsleep" };
-const STATUS_DOT = { offline: "var(--pink-ink)", working: "var(--lilac-ink)", ready: "var(--mint-ink)", setup: "var(--peach-ink)", unlinked: "var(--peach-ink)", asleep: "var(--lilac-ink)" };
+const STATUS_TEXT = { offline: "statusOffline", pairing: "statusPairing", working: "statusWorking", ready: "statusReady", setup: "statusSetup", unlinked: "statusUnlinked", asleep: "statusAsleep" };
+const STATUS_DOT = { offline: "var(--pink-ink)", pairing: "var(--peach-ink)", working: "var(--lilac-ink)", ready: "var(--mint-ink)", setup: "var(--peach-ink)", unlinked: "var(--peach-ink)", asleep: "var(--lilac-ink)" };
 
 function wakeLabel() {
   const s = state.agentStatus;
@@ -1846,6 +2064,21 @@ function checksHTML() {
     .join("");
 }
 
+function formatLinkedAge(linkedAt) {
+  if (!linkedAt || typeof linkedAt !== "number") return t("linkedAgeMinutes", { n: 1 });
+  const diffMs = Math.max(0, Date.now() - linkedAt);
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 60) {
+    return t("linkedAgeMinutes", { n: Math.max(1, diffMins) });
+  }
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) {
+    return t("linkedAgeHours", { n: diffHours });
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  return t("linkedAgeDays", { n: diffDays });
+}
+
 function renderStatus() {
   const st = computeStatus();
   const pill = $("statusPill");
@@ -1859,6 +2092,7 @@ function renderStatus() {
   let title = "", body = "";
   const actions = [];
   if (st === "offline") { title = t("popOfflineTitle"); body = t("popOfflineBody"); actions.push(["settings", t("openSettings"), openSettings]); }
+  else if (st === "pairing") { title = t("pairHelpTitle"); body = t("pairHelpBody"); actions.push(["settings", t("pairHelpOpenSettings"), openSettings]); }
   else if (st === "setup") { title = t("popSetupTitle"); body = t("popSetupBody"); actions.push(["copy", t("copyMychrome"), () => copyText("/mychrome")]); }
   else if (st === "unlinked") { title = t("popUnlinkedTitle"); body = t("popUnlinkedBody"); actions.push(["copy", t("copyMychrome"), () => copyText("/mychrome")]); }
   else if (st === "asleep") { title = t("popAsleepTitle"); body = t("popAsleepBody"); actions.push(["copy", t("copyMychrome"), () => copyText("/mychrome")]); }
@@ -1870,7 +2104,27 @@ function renderStatus() {
   }
   $("popTitle").textContent = title;
   $("popBody").textContent = body;
-  $("popChecks").innerHTML = checksHTML();
+
+  const meta = $("popLinkMeta");
+  const linkedId = s?.linkedId || null;
+  const linkedAt = s?.linkedAt || null;
+  if (meta) {
+    if (linkedId) {
+      meta.hidden = false;
+      const age = formatLinkedAge(linkedAt);
+      $("popLinkText").textContent = t("linkedTo", { id: linkedId, age });
+      const resetBtn = $("popResetLinkBtn");
+      if (resetBtn) {
+        const span = resetBtn.querySelector("span");
+        if (span) span.textContent = t("linkReset");
+        else resetBtn.textContent = t("linkReset");
+      }
+    } else {
+      meta.hidden = true;
+      $("popLinkText").textContent = "";
+    }
+  }
+  $("popChecks").innerHTML = st === "pairing" ? "" : checksHTML();
   const box = $("popActions");
   box.innerHTML = "";
   actions.forEach(([ic, label, fn], i) => {
@@ -1885,6 +2139,7 @@ function renderStatus() {
 
   renderWelcomeCard(st);
   renderSetupCard(st);
+  renderPairingCard(st);
   renderBanner(st);
   renderSendButton();
 }
@@ -1892,6 +2147,10 @@ function renderStatus() {
 function renderWelcomeCard(st) {
   const card = $("welcomeCard");
   if (!card) return;
+  if (st === "pairing") {
+    card.hidden = true;
+    return;
+  }
 
   const helperOk = state.connected;
   const linkedOk = Boolean(state.agentStatus?.linked);
@@ -1962,7 +2221,8 @@ function renderWelcomeCard(st) {
 
 function renderSetupCard(st) {
   const card = $("setupCard");
-  if (!["setup", "unlinked", "asleep", "offline"].includes(st)) { card.hidden = true; return; }
+  if (!card) return;
+  if (st === "pairing" || !["setup", "unlinked", "asleep", "offline"].includes(st)) { card.hidden = true; return; }
   const map = {
     offline: ["pink", "plug", "popOfflineTitle", "popOfflineBody", "settings", "openSettings", openSettings],
     setup: ["peach", "terminal", "popSetupTitle", "popSetupBody", "copy", "copyMychrome", () => copyText("/mychrome")],
@@ -1977,13 +2237,38 @@ function renderSetupCard(st) {
   card.hidden = Boolean($("welcomeCard"));
 }
 
+function renderPairingCard(st) {
+  const card = $("pairingCard");
+  if (!card) return;
+  if (st !== "pairing") {
+    card.hidden = true;
+    card.innerHTML = "";
+    return;
+  }
+  card.hidden = false;
+  card.innerHTML = `
+    <span class="circle">${icon("key")}</span>
+    <div class="pairing-text">
+      <h3 dir="auto">${esc(t("pairHelpTitle"))}</h3>
+      <p dir="auto">${esc(t("pairHelpBody"))}</p>
+      <ol class="pairing-hints" dir="auto">
+        <li>${esc(t("pairHelpStep1"))}</li>
+        <li>${esc(t("pairHelpStep2"))}</li>
+        <li>${esc(t("pairHelpStep3"))}</li>
+      </ol>
+      <button type="button" class="solid-btn" id="pairingCardSettingsBtn">${icon("settings")}<span>${esc(t("pairHelpOpenSettings"))}</span></button>
+    </div>`;
+
+  card.querySelector("#pairingCardSettingsBtn")?.addEventListener("click", openSettings);
+}
+
 function renderBanner(st) {
   const banner = $("banner");
   if (!banner) return;
-  const showWhenChatting = ["setup", "unlinked", "asleep", "offline"].includes(st) && $("hero")?.hidden;
+  const showWhenChatting = ["setup", "unlinked", "asleep", "offline", "pairing"].includes(st) && $("hero")?.hidden;
   if (!showWhenChatting) { banner.hidden = true; return; }
-  const textKey = { offline: "popOfflineTitle", setup: "popSetupTitle", unlinked: "popUnlinkedBody", asleep: "popAsleepBody" }[st];
-  const action = st === "offline" ? ["openSettings", openSettings] : ["copyMychrome", () => copyText("/mychrome")];
+  const textKey = st === "pairing" ? "pairHelpTitle" : { offline: "popOfflineTitle", setup: "popSetupTitle", unlinked: "popUnlinkedBody", asleep: "popAsleepBody" }[st];
+  const action = st === "pairing" ? ["pairHelpOpenSettings", openSettings] : st === "offline" ? ["openSettings", openSettings] : ["copyMychrome", () => copyText("/mychrome")];
   banner.style.setProperty("--dot", STATUS_DOT[st]);
   banner.innerHTML = `<span class="dot"></span><span class="banner-text" dir="auto">${esc(t(textKey))}</span><button type="button" class="pill-btn">${esc(t(action[0]))}</button>`;
   banner.querySelector("button")?.addEventListener("click", action[1]);
@@ -2303,13 +2588,32 @@ async function copyText(text) {
 // Settings
 // ---------------------------------------------------------------------------
 function loadSettings() {
-  chrome.storage.local.get(["bridgePort", "pairingToken", "blocklist", "reduceMotion"], (res) => {
-    $("portInput").value = res.bridgePort || 8765;
-    $("tokenInput").value = res.pairingToken || "";
-    $("blocklistInput").value = res.blocklist ?? "bank, paypal, stripe, checkout, account";
-    $("motionSwitch").checked = Boolean(res.reduceMotion);
-    applyMotion(Boolean(res.reduceMotion));
-  });
+  chrome.storage?.local?.get(
+    [
+      "bridgePort",
+      "pairingToken",
+      "blocklist",
+      "reduceMotion",
+      "approvalMode",
+      "protectSensitiveSites",
+      "allowedProtectedHosts",
+      "siteGrants",
+    ],
+    (res = {}) => {
+      if ($("portInput")) $("portInput").value = res.bridgePort || 8765;
+      if ($("tokenInput")) $("tokenInput").value = res.pairingToken || "";
+      if ($("blocklistInput")) $("blocklistInput").value = res.blocklist || "";
+      if ($("motionSwitch")) $("motionSwitch").checked = Boolean(res.reduceMotion);
+      applyMotion(Boolean(res.reduceMotion));
+      if ($("protectSwitch")) $("protectSwitch").checked = res.protectSensitiveSites !== false;
+      if ($("allowProtectedInput")) {
+        const arr = Array.isArray(res.allowedProtectedHosts) ? res.allowedProtectedHosts : [];
+        $("allowProtectedInput").value = arr.join(", ");
+      }
+      renderSiteGrants(res.siteGrants || []);
+      applyApprovalMode(res.approvalMode || "manual");
+    }
+  );
   checkVersions();
 }
 function applyMotion(reduce) {
@@ -2369,6 +2673,11 @@ function bindEvents() {
     const pop = $("statusPopover");
     if (!pop.hidden && !pop.contains(e.target) && !$("statusPill").contains(e.target)) closePopover();
   });
+  $("popResetLinkBtn")?.addEventListener("click", () => {
+    state.port?.postMessage({ type: "reset_link" });
+    closePopover();
+    toast(t("linkResetDone"));
+  });
 
   $("newChatBtn").addEventListener("click", newChat);
   $("themeBtn").addEventListener("click", toggleTheme);
@@ -2405,6 +2714,11 @@ function bindEvents() {
   $("portInput").addEventListener("change", (e) => saveSetting("bridgePort", parseInt(e.target.value || "8765", 10)));
   $("tokenInput").addEventListener("change", (e) => saveSetting("pairingToken", e.target.value.trim()));
   $("blocklistInput").addEventListener("change", (e) => saveSetting("blocklist", e.target.value.trim()));
+  $("protectSwitch")?.addEventListener("change", (e) => saveSetting("protectSensitiveSites", e.target.checked));
+  $("allowProtectedInput")?.addEventListener("change", (e) => {
+    const list = e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    saveSetting("allowedProtectedHosts", list);
+  });
   $("motionSwitch").addEventListener("change", (e) => {
     applyMotion(e.target.checked);
     saveSetting("reduceMotion", e.target.checked);
@@ -2484,6 +2798,65 @@ function bindEvents() {
     captureTabScreenshot();
   });
 
+  const modeBtn = $("modeBtn");
+  const modeMenu = $("modeMenu");
+  const modeWrap = $("modeWrap");
+  if (modeBtn && modeMenu) {
+    modeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = modeMenu.hidden;
+      modeMenu.hidden = !open;
+      modeBtn.setAttribute("aria-expanded", String(open));
+      if (open) {
+        const target = modeMenu.querySelector('[aria-checked="true"]') || modeMenu.querySelector(".attach-menu-item");
+        target?.focus();
+      }
+    });
+    modeMenu.addEventListener("keydown", (e) => {
+      const items = [...modeMenu.querySelectorAll(".attach-menu-item")];
+      const idx = items.indexOf(document.activeElement);
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = items[(idx + 1) % items.length];
+        next?.focus();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const prev = items[(idx - 1 + items.length) % items.length];
+        prev?.focus();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        modeMenu.hidden = true;
+        modeBtn.setAttribute("aria-expanded", "false");
+        modeBtn.focus();
+      }
+    });
+    document.addEventListener("click", (e) => {
+      if (modeWrap && !modeWrap.contains(e.target)) {
+        modeMenu.hidden = true;
+        modeBtn.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+  $("modeManualBtn")?.addEventListener("click", () => {
+    if (modeMenu) modeMenu.hidden = true;
+    modeBtn?.setAttribute("aria-expanded", "false");
+    setManualApprovalMode();
+    modeBtn?.focus();
+  });
+  $("modeAutoBtn")?.addEventListener("click", () => {
+    if (modeMenu) modeMenu.hidden = true;
+    modeBtn?.setAttribute("aria-expanded", "false");
+    requestAutoApprovalMode();
+    modeBtn?.focus();
+  });
+  $("autoConfirmOk")?.addEventListener("click", () => {
+    closeLayer("autoConfirmLayer");
+    chrome.storage?.local?.set?.({ approvalMode: "auto", autoApproveAck: true }, () => {
+      state.port?.postMessage({ type: "set_approval_mode", mode: "auto" });
+      applyApprovalMode("auto");
+    });
+  });
+
   // Drag & drop files onto side panel
   const dropOverlay = $("dropOverlay");
   let dragDepth = 0;
@@ -2553,12 +2926,47 @@ function bindEvents() {
       attachBtn?.setAttribute("aria-expanded", "false");
       return;
     }
+    if (modeMenu && !modeMenu.hidden) {
+      modeMenu.hidden = true;
+      modeBtn?.setAttribute("aria-expanded", "false");
+      modeBtn?.focus();
+      return;
+    }
+    const activeApproval = document.querySelector(".card.approval-card");
+    if (activeApproval) {
+      const apprId = activeApproval.dataset.apprId;
+      if (apprId) state.port?.postMessage({ type: "approval_response", id: apprId, decision: "deny" });
+      activeApproval.remove();
+      return;
+    }
+    if ($("autoConfirmLayer")?.dataset.open === "true") {
+      closeLayer("autoConfirmLayer");
+      return;
+    }
     if ($("confirmLayer").dataset.open === "true") return;
     if ($("lightbox").dataset.open === "true") closeLayer("lightbox");
     else if ($("logLayer").dataset.open === "true") closeLayer("logLayer");
     else if ($("settingsLayer").dataset.open === "true") closeLayer("settingsLayer");
     else if (!$("statusPopover").hidden) closePopover();
   });
+
+  if (chrome.storage?.onChanged?.addListener) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local") return;
+      if (changes.approvalMode) applyApprovalMode(changes.approvalMode.newValue || "manual");
+      if (changes.protectSensitiveSites && $("protectSwitch")) {
+        $("protectSwitch").checked = changes.protectSensitiveSites.newValue !== false;
+      }
+      if (changes.siteGrants) renderSiteGrants(changes.siteGrants.newValue || []);
+      if (changes.allowedProtectedHosts && $("allowProtectedInput")) {
+        const arr = Array.isArray(changes.allowedProtectedHosts.newValue) ? changes.allowedProtectedHosts.newValue : [];
+        $("allowProtectedInput").value = arr.join(", ");
+      }
+      if (changes.blocklist && $("blocklistInput") && document.activeElement !== $("blocklistInput")) {
+        $("blocklistInput").value = changes.blocklist.newValue || "";
+      }
+    });
+  }
 
   chrome.tabs.onUpdated.addListener((id, info) => {
     if ((BOUND_TAB === null || id === BOUND_TAB) && (info.title || info.favIconUrl || info.status === "complete" || info.url)) updateTab();

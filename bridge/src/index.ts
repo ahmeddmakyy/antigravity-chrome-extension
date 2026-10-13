@@ -7,7 +7,7 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { getOrCreatePairingToken } from "./token.js";
+import { getOrCreatePairingToken, writeExtensionKey } from "./token.js";
 import { Logger } from "./logger.js";
 import { BridgeWSServer } from "./ws-server.js";
 import { createMcpServer } from "./mcp-server.js";
@@ -24,13 +24,19 @@ async function main() {
   const logsDir = process.env.MYCHROME_LOGS_DIR || getLogsDir(BRIDGE_ROOT);
   const logger = new Logger(logsDir);
   const port = parseInt(process.env.BRIDGE_PORT || "8765", 10);
-  getOrCreatePairingToken(stateDir);
+  const { token } = getOrCreatePairingToken(stateDir);
+  const extensionDir = process.env.MYCHROME_EXTENSION_DIR || path.resolve(BRIDGE_ROOT, "..", "extension");
+  const keyResult = writeExtensionKey(extensionDir, token);
+  if (keyResult.ok) {
+    logger.info(`[Auth] Extension pairing key written to ${keyResult.path}.`);
+  } else {
+    logger.warn(`[Auth] Could not write extension pairing key: ${keyResult.error || "unknown error"}.`);
+  }
 
   let bridge: BridgeWSServer;
   if (process.env.MYCHROME_INPROCESS === "1") {
     logger.info(`[MCP] v${BRIDGE_VERSION} in-process mode.`);
-    const { token } = getOrCreatePairingToken(stateDir);
-    const server = new BridgeWSServer(port, token, logger, { stateDir });
+    const server = new BridgeWSServer(port, token, logger, { stateDir, extensionDir });
     await server.start();
     bridge = server;
   } else {

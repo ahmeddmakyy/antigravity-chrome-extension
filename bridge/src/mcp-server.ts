@@ -3,6 +3,7 @@ import { z } from "zod";
 import { BridgeWSServer } from "./ws-server.js";
 import { Logger } from "./logger.js";
 import { BRIDGE_VERSION } from "./version.js";
+import { resolveUploadPaths } from "./upload-manager.js";
 
 function formatResultText(res: unknown): string {
   if (res === undefined) return "null";
@@ -175,6 +176,7 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
             "If there is no task, end your turn now. New side-panel messages wait until the MyChrome helper can wake you.",
         });
       }
+
       return { content };
     }
   );
@@ -624,14 +626,20 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
 
   server.tool(
     "upload_file",
-    "Acts live on the user's real Chrome tab. Set files on an input[type=file] element via CDP DOM.setFileInputFiles.",
+    "Acts live on the user's real Chrome tab. Set files on an input[type=file] element via CDP DOM.setFileInputFiles. Paths must be attachment paths from the panel.",
     {
       tabId: z.number().describe("Tab ID"),
       ref: z.string().describe("File input ref"),
-      paths: z.array(z.string()).describe("Absolute file paths on local filesystem"),
+      paths: z.array(z.string()).describe("Attachment file paths from the panel"),
       intent: intentSchema,
     },
-    async (params) => runBrowserTool("upload_file", params, wsServer, logger)
+    async (params) => {
+      const resolved = resolveUploadPaths(params.paths);
+      if (!resolved.ok) {
+        return withInterrupts(handleError(resolved.error), wsServer);
+      }
+      return runBrowserTool("upload_file", { ...params, paths: resolved.paths }, wsServer, logger);
+    }
   );
 
   server.tool(

@@ -6,7 +6,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/ahmeddmakyy/antigravity-chrome-extension/main/install.sh | bash
 #   ./install.sh --check
 #   ./install.sh --uninstall
-#   ./install.sh --source mychrome-v5.2.0.zip --home-dir /tmp/test-home
+#   ./install.sh --source mychrome-v5.3.0.zip --home-dir /tmp/test-home
 
 set -euo pipefail
 
