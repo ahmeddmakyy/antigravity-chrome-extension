@@ -5,6 +5,33 @@ All notable changes to **MyChrome for Antigravity** will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.0] - 2026-10-13
+
+Safer by default: the extension now asks before it acts on a site, there is no pairing code to type, and a conversation link can no longer go stale.
+
+### Added
+- A conversation linked with `/mychrome` expires after 6 hours without use (`MYCHROME_LINK_TTL_HOURS` changes it). The status popover in the side panel shows which conversation is linked (first 8 characters and its age) and a "Start a new MyChrome conversation" button that drops the link at once. Before this, a link from days ago kept receiving what you typed in Chrome.
+- Automatic key hand-off: the helper writes its secret key to `pairing.json` inside the extension folder and the extension loads it by itself, so nothing has to be typed or paired. The file is git-ignored, owner-only and not web accessible; a manual key field stays in Settings as a fallback.
+- When you write in the panel and no Antigravity conversation is linked, MyChrome starts one conversation titled "MyChrome" in the Antigravity project `CLI Project` (set `MYCHROME_PROJECT_ID` to use another) and keeps using it. A conversation linked with `/mychrome` keeps priority.
+- Approval mode selector in the side panel composer: "Manually approve" (default) and "Automatically approve" ("Auto", enabled only after user confirms a warning dialog).
+- In manual mode, confirmation prompts before first-time domain access (Allow for this session / Always allow this site / Deny), risky button clicks (pay, buy, delete, send, submit in English and Arabic), JavaScript execution, file uploads, and closing tabs.
+- Safety settings panel: sensitive site protection toggle, list of allowed domains with Revoke buttons, custom "Blocked sites" list, and "Protected sites you allow anyway" overrides.
+- Protocol restrictions blocking navigation to non-HTTP/HTTPS URLs (`file:`, `chrome:`, `javascript:`, `data:`, `ftp:`).
+- Pressing Enter inside a form whose submit button looks risky (or that holds a password or card field) asks first in manual mode, like a click on that button.
+
+### Changed
+- After updating from 5.2.0, reload the extension in `chrome://extensions` once: it no longer trusts the browser `Origin` header and connects with a secret key that it now loads by itself.
+- Bridge listens on `127.0.0.1` only and rejects requests whose `Host` header is not a loopback address.
+- Restricted `upload_file` tool to files attached by the user in the side panel (stored in `~/.gemini/mychrome/uploads/`); arbitrary local paths, the token file, UNC paths, directories, symlinks, and path traversal (`..`) are rejected.
+- Approval mode toggle controls only MyChrome behavior and does not change any Antigravity permission settings.
+
+### Security
+- Tools the extension does not know are blocked in both modes.
+- Keys are never sent into an embedded frame that MyChrome cannot inspect (payment providers draw their card fields in such frames), in both modes.
+- Prompt injection defenses: manual approval mode is enabled by default to prevent untrusted web page content from performing unconfirmed actions.
+- Hard block on typing or sending keystrokes into password and payment card input fields in both manual and automatic modes.
+- Built-in protected sites list (banks, payment services, password managers, and major account login pages) blocked by default in both modes unless explicitly allowed by the user.
+
 ## [5.2.0] - 2026-10-07
 
 One helper process now keeps MyChrome connected for as long as Antigravity is open.
