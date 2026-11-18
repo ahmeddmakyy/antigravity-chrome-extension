@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: bridge/package-lock.json
+
+      - name: Install dependencies
+        working-directory: bridge
+        run: npm ci
+
+      - name: Build bridge
+        working-directory: bridge
+        run: npm run build
+
+      - name: Check dist in sync
+        if: runner.os == 'Linux' && matrix.node == 24
+        shell: bash
+        run: git diff --exit-code -- bridge/dist
+
+      - name: Run tests
+        working-directory: bridge
+        run: npm run test:ci
+
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Check extension syntax
+        run: node tools/syntax-check.mjs
+
+      - name: Privacy scan (no personal paths, ids or secrets)
+        run: python3 tools/privacy-check.py
+
+  installers:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      MYCHROME_NO_OPEN: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: bridge/package-lock.json
+
+      - name: Build bridge and the release package
+        shell: bash
+        run: |
+          (cd bridge && npm ci && npm run build)
+          node tools/package-release.mjs
+
+      - name: Check installer syntax
+        shell: pwsh
+        run: |
+          $t = $null; $e = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD/install.ps1", [ref]$t, [ref]$e)
+          if ($e.Count) { $e | ForEach-Object { Write-Error $_.Message }; exit 1 }
+          if ($IsLinux) { bash -n install.sh }
+
+      - name: Install and uninstall from the package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          HOME_DIR="$RUNNER_TEMP/home"; mkdir -p "$HOME_DIR"
+          ZIP=$(ls release/mychrome-v*.zip)
+          bash install.sh --source "$ZIP" --home-dir "$HOME_DIR"
+          test -f "$HOME_DIR/.gemini/mychrome/extension/manifest.json"
+          test -f "$HOME_DIR/.gemini/mychrome/bridge/dist/daemon.js"
+          test -f "$HOME_DIR/.gemini/config/plugins/mychrome/plugin.json"
+          test ! -f "$HOME_DIR/.gemini/mychrome/extension/pairing.json" || true
+          # Piped like the one-liner (curl | bash), still from the local package
+          cat install.sh | bash -s -- --source "$ZIP" --home-dir "$HOME_DIR"
+          bash install.sh --uninstall --home-dir "$HOME_DIR"
+          test ! -d "$HOME_DIR/.gemini/mychrome"
+
+      - name: Install and uninstall from the package (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $home2 = Join-Path $env:RUNNER_TEMP "home"; New-Item -ItemType Directory -Force $home2 | Out-Null
+          $zip = (Get-ChildItem release -Filter "mychrome-v*.zip").FullName
+          ./install.ps1 -Source $zip -HomeDir $home2
+          if (-not (Test-Path "$home2/.gemini/mychrome/extension/manifest.json")) { exit 1 }
+          if (-not (Test-Path "$home2/.gemini/config/plugins/mychrome/plugin.json")) { exit 1 }
+          ./install.ps1 -Uninstall -HomeDir $home2
+          if (Test-Path "$home2/.gemini/mychrome") { exit 1 }
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: bridge/package-lock.json
+
+      - name: Install dependencies
+        working-directory: bridge
+        run: npm ci
+
+      - name: Audit production dependencies
+        working-directory: bridge
+        run: npm audit --omit=dev --audit-level=high

@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+package-lock.json.backup
+
+# Local session state and credentials
+.token
+*.token
+.session.json
+*.session.json
+*.key
+*.pem
+*.priv
+.env
+.env.*
+extension/pairing.json
+
+# Logs
+logs/
+test-logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Release and package artifacts
+*.zip
+SHA256SUMS.txt
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temp files
+tmp/
+temp/
+
+# Local archive of old notes and releases (not part of the repo)
+_archive/
+
+# Local Claude Code settings (preview server config)
+.claude/
+
+# Local research notes, never published
+docs/research/
+
+# Temporary key files the helper writes before renaming them into place
+extension/.pairing.json.tmp.*
+*.tmp.*
+
+# Backups the installers make, test and coverage output
+*.bak-*
+coverage/
+.npmrc
+
+# Release packages built by tools/package-release.mjs
+release/

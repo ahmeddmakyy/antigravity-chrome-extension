@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "mychrome": {
+      "command": "{{NODE_PATH}}",
+      "args": [
+        "{{BRIDGE_PATH}}"
+      ]
+    }
+  }
+}

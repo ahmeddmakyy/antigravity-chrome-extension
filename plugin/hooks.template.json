@@ -1,0 +1,12 @@
+{
+  "mychrome-stop": {
+    "enabled": true,
+    "Stop": [
+      {
+        "type": "command",
+        "command": "\"{{NODE_PATH}}\" \"{{STOP_HOOK_PATH}}\"",
+        "timeout": 1830
+      }
+    ]
+  }
+}
