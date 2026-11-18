@@ -1,6 +1,6 @@
 {
   "name": "mychrome",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "license": "UNLICENSED",
   "description": "MyChrome MCP Browser Bridge and WebSocket Server",
@@ -10,8 +10,8 @@
     "build": "node ./node_modules/typescript/bin/tsc --noEmit && node build.js",
     "start": "node dist/index.js",
     "dev": "node build.js && node ./node_modules/typescript/bin/tsc -w",
-    "test": "node --test --test-force-exit --test-timeout=60000 --test-concurrency=1 test/bridge.test.js test/push.test.js test/v4.test.js test/origin.test.js test/upload.test.js test/uploads-guard.test.js test/version-sync.test.js test/helper.test.js test/key-handoff.test.js test/policy.test.js test/pairing-ext.test.js test/hold.test.js test/default-conversation.test.js test/link-lifetime.test.js test/batch.test.js test/model.test.js test/plan-approval.test.js",
-    "test:ci": "node --test --test-force-exit --test-timeout=60000 --test-concurrency=1 test/bridge.test.js test/push.test.js test/v4.test.js test/origin.test.js test/upload.test.js test/uploads-guard.test.js test/version-sync.test.js test/helper.test.js test/key-handoff.test.js test/policy.test.js test/pairing-ext.test.js test/hold.test.js test/default-conversation.test.js test/link-lifetime.test.js test/batch.test.js test/model.test.js test/plan-approval.test.js",
+    "test": "node --test --test-force-exit --test-timeout=60000 --test-concurrency=1 test/bridge.test.js test/push.test.js test/v4.test.js test/origin.test.js test/upload.test.js test/uploads-guard.test.js test/upload-roots.test.js test/version-sync.test.js test/helper.test.js test/key-handoff.test.js test/policy.test.js test/pairing-ext.test.js test/hold.test.js test/default-conversation.test.js test/link-lifetime.test.js test/batch.test.js test/model.test.js test/plan-approval.test.js",
+    "test:ci": "node --test --test-force-exit --test-timeout=60000 --test-concurrency=1 test/bridge.test.js test/push.test.js test/v4.test.js test/origin.test.js test/upload.test.js test/uploads-guard.test.js test/upload-roots.test.js test/version-sync.test.js test/helper.test.js test/key-handoff.test.js test/policy.test.js test/pairing-ext.test.js test/hold.test.js test/default-conversation.test.js test/link-lifetime.test.js test/batch.test.js test/model.test.js test/plan-approval.test.js",
     "setup": "node dist/setup.js",
     "waker": "node dist/waker.js"
   },

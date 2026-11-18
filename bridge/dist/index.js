@@ -32352,6 +32352,12 @@ function getLogsDir(fallbackDir) {
   }
   return logs;
 }
+function getSettingsPath() {
+  if (process.env.MYCHROME_SETTINGS_FILE) {
+    return path.resolve(process.env.MYCHROME_SETTINGS_FILE);
+  }
+  return path.join(getDataDir(), "settings.json");
+}
 function getUploadsDir(fallbackDir) {
   if (process.env.MYCHROME_UPLOADS_DIR) {
     return path.resolve(process.env.MYCHROME_UPLOADS_DIR);
@@ -32552,7 +32558,7 @@ import path5 from "path";
 import { fileURLToPath } from "url";
 
 // src/version.ts
-var BRIDGE_VERSION = "1.0.0";
+var BRIDGE_VERSION = "1.1.0";
 
 // src/constants.ts
 var EXTENSION_ID = "aeofpcedejopeeebdjfkapcabkkflhej";
@@ -32628,42 +32634,127 @@ var ALLOWED_EXTENSIONS = /* @__PURE__ */ new Set([
   ".xlsx",
   ".pptx"
 ]);
-var UPLOAD_RESTRICTION_ERROR = "upload_file only accepts files the user attached in the MyChrome panel (they are stored in the MyChrome uploads folder); ask the user to attach the file in the panel and use the path from the attachment.";
-function resolveUploadPaths(paths, uploadsRoot) {
-  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 5) {
+var UPLOAD_RESTRICTION_ERROR = "upload_file and upload_drop only accept files from the folders the user allowed: files attached in the MyChrome panel, and the upload folders listed in MyChrome settings (Safety > Folders the agent can upload from). Ask the user to attach the file in the panel, or to add its folder to that list.";
+var MAX_PATH_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
+var MAX_PATH_UPLOAD_FILES = 20;
+var PATH_UPLOAD_EXTENSIONS = /* @__PURE__ */ new Set([
+  ...ALLOWED_EXTENSIONS,
+  // more images
+  ".heic",
+  ".heif",
+  ".avif",
+  ".bmp",
+  ".tif",
+  ".tiff",
+  // video
+  ".mp4",
+  ".mov",
+  ".m4v",
+  ".webm",
+  ".avi",
+  ".mkv",
+  ".mpeg",
+  ".mpg",
+  ".3gp",
+  // audio
+  ".mp3",
+  ".m4a",
+  ".wav",
+  ".aac",
+  ".ogg",
+  // subtitles and documents platforms accept next to media
+  ".srt",
+  ".vtt",
+  ".doc",
+  ".ppt",
+  ".xls"
+]);
+function readHelperSettings() {
+  try {
+    const raw = fs4.readFileSync(getSettingsPath(), "utf8");
+    const parsed = JSON.parse(raw.replace(/^﻿/, ""));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function cleanUploadRoots(list) {
+  const raw = Array.isArray(list) ? list : typeof list === "string" ? list.split(/[;\n]/) : [];
+  const out = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const p = item.trim().replace(/^"(.*)"$/, "$1");
+    if (!p || !path4.isAbsolute(p)) continue;
+    const norm = path4.resolve(p);
+    if (!out.some((o) => process.platform === "win32" ? o.toLowerCase() === norm.toLowerCase() : o === norm)) out.push(norm);
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+function saveUploadRoots(list) {
+  const roots = cleanUploadRoots(list);
+  const file2 = getSettingsPath();
+  const current = readHelperSettings();
+  const next = { ...current, uploadRoots: roots };
+  fs4.mkdirSync(path4.dirname(file2), { recursive: true, mode: 448 });
+  const tmp = `${file2}.tmp.${process.pid}`;
+  fs4.writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n", { mode: 384 });
+  fs4.renameSync(tmp, file2);
+  return roots;
+}
+function getUploadRoots() {
+  return [
+    getUploadsDir(),
+    ...cleanUploadRoots(process.env.MYCHROME_UPLOAD_ROOTS || ""),
+    ...cleanUploadRoots(readHelperSettings().uploadRoots)
+  ];
+}
+var fold = (p) => process.platform === "win32" ? p.toLowerCase() : p;
+function resolveUploadPaths(paths, roots) {
+  if (!Array.isArray(paths) || paths.length === 0) {
     return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  }
+  if (paths.length > MAX_PATH_UPLOAD_FILES) {
+    return { ok: false, error: `At most ${MAX_PATH_UPLOAD_FILES} files can be uploaded at once.` };
   }
   for (const p of paths) {
     if (typeof p !== "string" || !p.trim()) {
       return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
     }
   }
-  const root = uploadsRoot ?? getUploadsDir();
-  let realRoot;
-  try {
-    if (!fs4.existsSync(root)) {
-      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  const realRoots = [];
+  for (const root of roots === void 0 ? getUploadRoots() : [].concat(roots)) {
+    try {
+      if (fs4.existsSync(root) && fs4.statSync(root).isDirectory()) realRoots.push(fold(fs4.realpathSync(root)));
+    } catch {
     }
-    realRoot = fs4.realpathSync(root);
-  } catch {
-    return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
   }
-  const rootForRel = process.platform === "win32" ? realRoot.toLowerCase() : realRoot;
+  if (realRoots.length === 0) return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
   const resolvedPaths = [];
   for (const rawPath of paths) {
+    const shown = path4.basename(rawPath);
     try {
       if (!fs4.existsSync(rawPath)) {
-        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+        return { ok: false, error: `File not found: ${rawPath}` };
       }
       const realFilePath = fs4.realpathSync(rawPath);
       const stat = fs4.statSync(realFilePath);
       if (!stat.isFile()) {
+        return { ok: false, error: `Not a file: ${rawPath}` };
+      }
+      const inside = realRoots.some((root) => {
+        const rel = path4.relative(root, fold(realFilePath));
+        return rel !== "" && !rel.startsWith("..") && !path4.isAbsolute(rel);
+      });
+      if (!inside) {
         return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
       }
-      const fileForRel = process.platform === "win32" ? realFilePath.toLowerCase() : realFilePath;
-      const rel = path4.relative(rootForRel, fileForRel);
-      if (rel.startsWith("..") || path4.isAbsolute(rel) || rel === "") {
-        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      const ext = path4.extname(realFilePath).toLowerCase();
+      if (!PATH_UPLOAD_EXTENSIONS.has(ext)) {
+        return { ok: false, error: `${shown}: this file type (${ext || "no extension"}) cannot be uploaded. Images, video, audio, PDF, text and Office files can.` };
+      }
+      if (stat.size > MAX_PATH_UPLOAD_BYTES) {
+        return { ok: false, error: `${shown} is larger than 4 GB.` };
       }
       resolvedPaths.push(realFilePath);
     } catch {
@@ -33320,6 +33411,15 @@ var BridgeWSServer = class {
           const name = lang === "en" ? "English" : "Arabic (Egyptian)";
           this.pendingLanguageNote = `The user switched the side panel to ${name}. From now on write every intent, progress update and plan step in ${name}.`;
         }
+      }
+      return;
+    }
+    if (msg.type === "upload_roots") {
+      try {
+        const roots = saveUploadRoots(msg.roots);
+        this.logger.info(`[Uploads] ${roots.length} upload folder(s) allowed by the user.`);
+      } catch (err) {
+        this.logger.warn(`[Uploads] Could not save the upload folders: ${err.message}`);
       }
       return;
     }
@@ -34401,6 +34501,7 @@ var BridgeWSServer = class {
       case "drag":
         return isAr ? `\u0633\u062D\u0628 \u0648\u0625\u0641\u0644\u0627\u062A` : `Dragging`;
       case "upload_file":
+      case "upload_drop":
         return isAr ? `\u0631\u0641\u0639 \u0645\u0644\u0641` : `Uploading file`;
       case "wait":
         return isAr ? `\u0627\u0646\u062A\u0638\u0627\u0631...` : `Waiting...`;
@@ -34617,7 +34718,7 @@ var BridgeWSServer = class {
         "stopped_by_user: the user pressed Stop in the side panel. Do not call more browser tools. Send one short reply_to_user(kind='final') and end your turn."
       );
     }
-    if (tool === "upload_file") {
+    if (tool === "upload_file" || tool === "upload_drop") {
       const resolved = resolveUploadPaths(params.paths);
       if (!resolved.ok) {
         throw new Error(resolved.error);
@@ -42906,7 +43007,7 @@ function createMcpServer(wsServer, logger) {
       version: BRIDGE_VERSION
     },
     {
-      instructions: "These tools act live on the user's real Chrome tab and replace any built-in browser tool or browser subagent. The user talks to you from the Antigravity side panel in Chrome and only sees what you send with reply_to_user. When the user runs /mychrome, call connect_side_panel once. Each later side-panel message starts a new turn for you automatically: handle it, finish with reply_to_user(kind='final'), then end your turn. Do not poll for messages unless a tool result tells you to. For tasks with 3 or more steps, show a checklist with update_plan and keep it current. Be fast: each of your turns costs seconds, so use browser_batch for any sequence of actions you can predict, prefer get_page_text and read_page over screenshot, and do not add fixed waits (navigate already waits for the page)."
+      instructions: "These tools act live on the user's real Chrome tab and replace any built-in browser tool or browser subagent. The user talks to you from the Antigravity side panel in Chrome and only sees what you send with reply_to_user. When the user runs /mychrome, call connect_side_panel once. Each later side-panel message starts a new turn for you automatically: handle it, finish with reply_to_user(kind='final'), then end your turn. Do not poll for messages unless a tool result tells you to. For tasks with 3 or more steps, show a checklist with update_plan and keep it current. Be fast: each of your turns costs seconds, so use browser_batch for any sequence of actions you can predict, prefer get_page_text and read_page over screenshot, and do not add fixed waits (navigate already waits for the page). To post media on a social site (Instagram, TikTok, LinkedIn, Facebook, X, YouTube): open the site's create or upload screen, call upload_file with trigger_ref set to the button that opens the file picker (or with no target when the page has a file input), then wait(condition='enabled', value='Next' or the platform's button) while the video processes, and stop before the final Share or Post click unless the user asked you to publish."
     }
   );
   server.tool(
@@ -43227,6 +43328,7 @@ ${interrupts}`);
     {
       tabId: external_exports.number().describe("Tab ID"),
       filter: external_exports.enum(["all", "interactive", "viewport"]).optional().default("interactive").describe("Filter elements ('all', 'interactive', or 'viewport')"),
+      include_hidden: external_exports.boolean().optional().describe("Also list file inputs (input[type=file]) even when the page hides them, with their accept and multiple attributes. Use before upload_file."),
       intent: intentSchema
     },
     async (params) => runBrowserTool("read_page", params, wsServer, logger)
@@ -43237,6 +43339,7 @@ ${interrupts}`);
     {
       tabId: external_exports.number().describe("Tab ID"),
       query: external_exports.string().describe("Text or description to find"),
+      include_hidden: external_exports.boolean().optional().describe("Also return the page's file inputs, even hidden ones (for upload_file)."),
       intent: intentSchema
     },
     async (params) => runBrowserTool("find", params, wsServer, logger)
@@ -43418,31 +43521,41 @@ ${interrupts}`);
     },
     async (params) => runBrowserTool("drag", params, wsServer, logger)
   );
+  const uploadPaths = external_exports.array(external_exports.string()).min(1).max(20).describe(
+    "Absolute paths of the files: attachments from the panel, or files in a folder the user allowed in MyChrome settings. Images, video (mp4, mov, webm...), audio, PDF, text and Office files, up to 4 GB each."
+  );
   server.tool(
     "upload_file",
-    "Acts live on the user's real Chrome tab. Set files on an input[type=file] element via CDP DOM.setFileInputFiles. Paths must be attachment paths from the panel.",
+    "Acts live on the user's real Chrome tab. Puts files into the page's file picker, the way a person picks them from their computer. Chrome reads the files from disk, so large videos work. Pick ONE way to reach the picker: trigger_ref (best for Instagram, TikTok, LinkedIn, Facebook, X, YouTube: the button that opens the picker, such as 'Select from computer'; MyChrome clicks it and catches the picker), ref (a file input from read_page or find with include_hidden), selector (CSS, searched inside open shadow roots and same-origin frames), or nothing (the page's only file input, or the one whose accept fits the files). Returns the file names the page received. Then screenshot or wait(condition='enabled') for the platform's Next/Post button before going on.",
     {
       tabId: external_exports.number().describe("Tab ID"),
-      ref: external_exports.string().describe("File input ref"),
-      paths: external_exports.array(external_exports.string()).describe("Attachment file paths from the panel"),
+      paths: uploadPaths,
+      trigger_ref: external_exports.string().optional().describe("Ref of the button or area that opens the file picker"),
+      ref: external_exports.string().optional().describe("Ref of an input[type=file]"),
+      selector: external_exports.string().optional().describe("CSS selector of an input[type=file]"),
       intent: intentSchema
     },
-    async (params) => {
-      const resolved = resolveUploadPaths(params.paths);
-      if (!resolved.ok) {
-        return withInterrupts(handleError(resolved.error), wsServer);
-      }
-      return runBrowserTool("upload_file", { ...params, paths: resolved.paths }, wsServer, logger);
-    }
+    async (params) => runBrowserTool("upload_file", params, wsServer, logger)
+  );
+  server.tool(
+    "upload_drop",
+    "Acts live on the user's real Chrome tab. Drops files onto an element, like dragging them from the desktop. Use it for upload areas that only accept a drop; prefer upload_file otherwise.",
+    {
+      tabId: external_exports.number().describe("Tab ID"),
+      paths: uploadPaths,
+      target_ref: external_exports.string().describe("Ref of the drop area"),
+      intent: intentSchema
+    },
+    async (params) => runBrowserTool("upload_drop", params, wsServer, logger)
   );
   server.tool(
     "wait",
-    "Acts live on the user's real Chrome tab. Wait for page condition: 'load', 'network_idle', or 'selector'.",
+    "Acts live on the user's real Chrome tab. Wait for a page condition: 'load', 'network_idle', 'selector' (CSS), 'text' (text appears on the page), 'enabled' (a button found by ref or by its text becomes clickable, e.g. 'Next' or 'Post' after a video finishes processing), or 'time'.",
     {
       tabId: external_exports.number().describe("Tab ID"),
-      condition: external_exports.enum(["load", "network_idle", "selector", "time"]).describe("'time' simply waits timeout_ms"),
-      value: external_exports.string().optional().describe("CSS selector if condition is 'selector'"),
-      timeout_ms: external_exports.number().optional().default(1e4).describe("Max wait (or the exact wait for 'time'), in ms"),
+      condition: external_exports.enum(["load", "network_idle", "selector", "text", "enabled", "time"]).describe("'time' simply waits timeout_ms"),
+      value: external_exports.string().optional().describe("CSS selector for 'selector'; the text for 'text'; a ref or the button's text for 'enabled'"),
+      timeout_ms: external_exports.number().optional().default(1e4).describe("Max wait (or the exact wait for 'time'), in ms. Up to 300000 for 'text' and 'enabled' (video processing)."),
       intent: intentSchema
     },
     async (params) => runBrowserTool("wait", params, wsServer, logger)
@@ -43526,6 +43639,7 @@ var BATCHABLE_TOOLS = [
   "form_input",
   "drag",
   "upload_file",
+  "upload_drop",
   "wait",
   "execute_javascript",
   "handle_dialog",

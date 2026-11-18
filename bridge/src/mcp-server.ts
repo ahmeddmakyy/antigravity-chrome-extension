@@ -12,7 +12,6 @@ import { z } from "zod";
 import { BridgeWSServer } from "./ws-server.js";
 import { Logger } from "./logger.js";
 import { BRIDGE_VERSION } from "./version.js";
-import { resolveUploadPaths } from "./upload-manager.js";
 
 /**
  * Tool results go to the model, so every byte costs reading time. JSON is compact (no
@@ -128,7 +127,10 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
         "handle it, finish with reply_to_user(kind='final'), then end your turn. Do not poll for messages unless a tool result tells you to. " +
         "For tasks with 3 or more steps, show a checklist with update_plan and keep it current. " +
         "Be fast: each of your turns costs seconds, so use browser_batch for any sequence of actions you can predict, " +
-        "prefer get_page_text and read_page over screenshot, and do not add fixed waits (navigate already waits for the page).",
+        "prefer get_page_text and read_page over screenshot, and do not add fixed waits (navigate already waits for the page). " +
+        "To post media on a social site (Instagram, TikTok, LinkedIn, Facebook, X, YouTube): open the site's create or upload screen, " +
+        "call upload_file with trigger_ref set to the button that opens the file picker (or with no target when the page has a file input), " +
+        "then wait(condition='enabled', value='Next' or the platform's button) while the video processes, and stop before the final Share or Post click unless the user asked you to publish.",
     }
   );
 
@@ -509,6 +511,10 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
     {
       tabId: z.number().describe("Tab ID"),
       filter: z.enum(["all", "interactive", "viewport"]).optional().default("interactive").describe("Filter elements ('all', 'interactive', or 'viewport')"),
+      include_hidden: z
+        .boolean()
+        .optional()
+        .describe("Also list file inputs (input[type=file]) even when the page hides them, with their accept and multiple attributes. Use before upload_file."),
       intent: intentSchema,
     },
     async (params) => runBrowserTool("read_page", params, wsServer, logger)
@@ -520,6 +526,7 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
     {
       tabId: z.number().describe("Tab ID"),
       query: z.string().describe("Text or description to find"),
+      include_hidden: z.boolean().optional().describe("Also return the page's file inputs, even hidden ones (for upload_file)."),
       intent: intentSchema,
     },
     async (params) => runBrowserTool("find", params, wsServer, logger)
@@ -728,32 +735,51 @@ export function createMcpServer(wsServer: BridgeWSServer, logger: Logger): McpSe
     async (params) => runBrowserTool("drag", params, wsServer, logger)
   );
 
+  const uploadPaths = z
+    .array(z.string())
+    .min(1)
+    .max(20)
+    .describe(
+      "Absolute paths of the files: attachments from the panel, or files in a folder the user allowed in MyChrome settings. Images, video (mp4, mov, webm...), audio, PDF, text and Office files, up to 4 GB each."
+    );
+
   server.tool(
     "upload_file",
-    "Acts live on the user's real Chrome tab. Set files on an input[type=file] element via CDP DOM.setFileInputFiles. Paths must be attachment paths from the panel.",
+    "Acts live on the user's real Chrome tab. Puts files into the page's file picker, the way a person picks them from their computer. Chrome reads the files from disk, so large videos work. " +
+      "Pick ONE way to reach the picker: trigger_ref (best for Instagram, TikTok, LinkedIn, Facebook, X, YouTube: the button that opens the picker, such as 'Select from computer'; MyChrome clicks it and catches the picker), " +
+      "ref (a file input from read_page or find with include_hidden), selector (CSS, searched inside open shadow roots and same-origin frames), or nothing (the page's only file input, or the one whose accept fits the files). " +
+      "Returns the file names the page received. Then screenshot or wait(condition='enabled') for the platform's Next/Post button before going on.",
     {
       tabId: z.number().describe("Tab ID"),
-      ref: z.string().describe("File input ref"),
-      paths: z.array(z.string()).describe("Attachment file paths from the panel"),
+      paths: uploadPaths,
+      trigger_ref: z.string().optional().describe("Ref of the button or area that opens the file picker"),
+      ref: z.string().optional().describe("Ref of an input[type=file]"),
+      selector: z.string().optional().describe("CSS selector of an input[type=file]"),
       intent: intentSchema,
     },
-    async (params) => {
-      const resolved = resolveUploadPaths(params.paths);
-      if (!resolved.ok) {
-        return withInterrupts(handleError(resolved.error), wsServer);
-      }
-      return runBrowserTool("upload_file", { ...params, paths: resolved.paths }, wsServer, logger);
-    }
+    async (params) => runBrowserTool("upload_file", params, wsServer, logger)
+  );
+
+  server.tool(
+    "upload_drop",
+    "Acts live on the user's real Chrome tab. Drops files onto an element, like dragging them from the desktop. Use it for upload areas that only accept a drop; prefer upload_file otherwise.",
+    {
+      tabId: z.number().describe("Tab ID"),
+      paths: uploadPaths,
+      target_ref: z.string().describe("Ref of the drop area"),
+      intent: intentSchema,
+    },
+    async (params) => runBrowserTool("upload_drop", params, wsServer, logger)
   );
 
   server.tool(
     "wait",
-    "Acts live on the user's real Chrome tab. Wait for page condition: 'load', 'network_idle', or 'selector'.",
+    "Acts live on the user's real Chrome tab. Wait for a page condition: 'load', 'network_idle', 'selector' (CSS), 'text' (text appears on the page), 'enabled' (a button found by ref or by its text becomes clickable, e.g. 'Next' or 'Post' after a video finishes processing), or 'time'.",
     {
       tabId: z.number().describe("Tab ID"),
-      condition: z.enum(["load", "network_idle", "selector", "time"]).describe("'time' simply waits timeout_ms"),
-      value: z.string().optional().describe("CSS selector if condition is 'selector'"),
-      timeout_ms: z.number().optional().default(10000).describe("Max wait (or the exact wait for 'time'), in ms"),
+      condition: z.enum(["load", "network_idle", "selector", "text", "enabled", "time"]).describe("'time' simply waits timeout_ms"),
+      value: z.string().optional().describe("CSS selector for 'selector'; the text for 'text'; a ref or the button's text for 'enabled'"),
+      timeout_ms: z.number().optional().default(10000).describe("Max wait (or the exact wait for 'time'), in ms. Up to 300000 for 'text' and 'enabled' (video processing)."),
       intent: intentSchema,
     },
     async (params) => runBrowserTool("wait", params, wsServer, logger)
@@ -853,6 +879,7 @@ export const BATCHABLE_TOOLS = [
   "form_input",
   "drag",
   "upload_file",
+  "upload_drop",
   "wait",
   "execute_javascript",
   "handle_dialog",

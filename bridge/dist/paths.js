@@ -55,6 +55,12 @@ function getLogsDir(fallbackDir) {
   }
   return logs;
 }
+function getSettingsPath() {
+  if (process.env.MYCHROME_SETTINGS_FILE) {
+    return path.resolve(process.env.MYCHROME_SETTINGS_FILE);
+  }
+  return path.join(getDataDir(), "settings.json");
+}
 function getUploadsDir(fallbackDir) {
   if (process.env.MYCHROME_UPLOADS_DIR) {
     return path.resolve(process.env.MYCHROME_UPLOADS_DIR);
@@ -76,6 +82,7 @@ export {
   ensureDataDir,
   getDataDir,
   getLogsDir,
+  getSettingsPath,
   getTokenPath,
   getUploadsDir
 };

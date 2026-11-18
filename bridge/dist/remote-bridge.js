@@ -3772,6 +3772,56 @@ function getTokenPath(fallbackDir) {
 
 // src/upload-manager.ts
 var MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+var ALLOWED_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".pdf",
+  ".txt",
+  ".md",
+  ".csv",
+  ".json",
+  ".html",
+  ".xml",
+  ".docx",
+  ".xlsx",
+  ".pptx"
+]);
+var MAX_PATH_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
+var PATH_UPLOAD_EXTENSIONS = /* @__PURE__ */ new Set([
+  ...ALLOWED_EXTENSIONS,
+  // more images
+  ".heic",
+  ".heif",
+  ".avif",
+  ".bmp",
+  ".tif",
+  ".tiff",
+  // video
+  ".mp4",
+  ".mov",
+  ".m4v",
+  ".webm",
+  ".avi",
+  ".mkv",
+  ".mpeg",
+  ".mpg",
+  ".3gp",
+  // audio
+  ".mp3",
+  ".m4a",
+  ".wav",
+  ".aac",
+  ".ogg",
+  // subtitles and documents platforms accept next to media
+  ".srt",
+  ".vtt",
+  ".doc",
+  ".ppt",
+  ".xls"
+]);
 
 // src/ws-server.ts
 var __filename = fileURLToPath(import.meta.url);

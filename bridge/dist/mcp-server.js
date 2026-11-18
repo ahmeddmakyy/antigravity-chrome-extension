@@ -3262,8 +3262,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path3) {
-      let input2 = path3;
+    function removeDotSegments(path) {
+      let input2 = path;
       const output2 = [];
       let nextSlash = -1;
       let len = 0;
@@ -3337,11 +3337,11 @@ var require_utils = __commonJS({
       }
       return output2.join("");
     }
-    function removeDotSegmentsRelative(path3) {
-      if (path3 === "" || path3[0] === "/") {
-        return removeDotSegments(path3);
+    function removeDotSegmentsRelative(path) {
+      if (path === "" || path[0] === "/") {
+        return removeDotSegments(path);
       }
-      const segments = path3.split("/");
+      const segments = path.split("/");
       const last = segments.length - 1;
       const output2 = [];
       let trailingDirectory = false;
@@ -3704,8 +3704,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path3 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
+        const path = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path && path !== "/" ? path : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7242,12 +7242,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs3, exportName) {
+    function addFormats(ajv, list, fs, exportName) {
       var _a3;
       var _b;
       (_a3 = (_b = ajv.opts.code).formats) !== null && _a3 !== void 0 ? _a3 : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs3[f]);
+        ajv.addFormat(f, fs[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7629,8 +7629,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
+  const { data, path, errorMaps, issueData } = params;
+  const fullPath = [...path, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7745,11 +7745,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path3;
+    this._path = path;
     this._key = key;
   }
   get path() {
@@ -11704,10 +11704,10 @@ function mergeDefs(...defs) {
 function cloneDef(schema) {
   return mergeDefs(schema._zod.def);
 }
-function getElementAtPath(obj, path3) {
-  if (!path3)
+function getElementAtPath(obj, path) {
+  if (!path)
     return obj;
-  return path3.reduce((acc, key) => acc?.[key], obj);
+  return path.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -12047,11 +12047,11 @@ function explicitlyAborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path3, issues) {
+function prefixIssues(path, issues) {
   return issues.map((iss) => {
     var _a3;
     (_a3 = iss).path ?? (_a3.path = []);
-    iss.path.unshift(path3);
+    iss.path.unshift(path);
     return iss;
   });
 }
@@ -12513,16 +12513,16 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
 }
 function formatError(error62, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path3 = []) => {
+  const processError = (error63, path = []) => {
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path3, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
       } else {
-        const fullpath = [...path3, ...issue2.path];
+        const fullpath = [...path, ...issue2.path];
         if (fullpath.length === 0) {
           fieldErrors._errors.push(mapper(issue2));
         } else {
@@ -12561,17 +12561,17 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
 }
 function treeifyError(error62, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path3 = []) => {
+  const processError = (error63, path = []) => {
     var _a3;
     for (const issue2 of error63.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path3, ...issue2.path]));
+        issue2.errors.map((issues) => processError({ issues }, [...path, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
       } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path3, ...issue2.path]);
+        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
       } else {
-        const fullpath = [...path3, ...issue2.path];
+        const fullpath = [...path, ...issue2.path];
         if (fullpath.length === 0) {
           result.errors.push(mapper(issue2));
           continue;
@@ -12610,8 +12610,8 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
 }
 function toDotPath(_path) {
   const segs = [];
-  const path3 = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
-  for (const seg of path3) {
+  const path = _path.map((seg) => typeof seg === "object" ? seg.key : seg);
+  for (const seg of path) {
     if (typeof seg === "number")
       segs.push(`[${seg}]`);
     else if (typeof seg === "symbol")
@@ -28162,11 +28162,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path3) {
-  if (path3.length === 0) {
+function getDotPath(path) {
+  if (path.length === 0) {
     return "object root";
   }
-  return path3.reduce((acc, seg, index) => {
+  return path.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -30393,13 +30393,13 @@ function resolveRef(ref, ctx) {
   if (!ref.startsWith("#")) {
     throw new Error("External $ref is not supported, only local refs (#/...) are allowed");
   }
-  const path3 = ref.slice(1).split("/").filter(Boolean);
-  if (path3.length === 0) {
+  const path = ref.slice(1).split("/").filter(Boolean);
+  if (path.length === 0) {
     return ctx.rootSchema;
   }
   const defsKey = ctx.version === "draft-2020-12" ? "$defs" : "definitions";
-  if (path3[0] === defsKey) {
-    const key = path3[1] === void 0 ? void 0 : decodeJSONPointerSegment(path3[1]);
+  if (path[0] === defsKey) {
+    const key = path[1] === void 0 ? void 0 : decodeJSONPointerSegment(path[1]);
     if (!key || !ctx.defs[key]) {
       throw new Error(`Reference not found: ${ref}`);
     }
@@ -36539,87 +36539,7 @@ var EMPTY_COMPLETION_RESULT = {
 };
 
 // src/version.ts
-var BRIDGE_VERSION = "1.0.0";
-
-// src/upload-manager.ts
-import fs2 from "fs";
-import path2 from "path";
-
-// src/paths.ts
-import os from "os";
-import path from "path";
-import fs from "fs";
-function getDataDir() {
-  if (process.env.MYCHROME_DATA_DIR) {
-    return path.resolve(process.env.MYCHROME_DATA_DIR);
-  }
-  const home = process.env.MYCHROME_HOME_DIR || os.homedir();
-  return path.join(home, ".gemini", "mychrome");
-}
-function getUploadsDir(fallbackDir) {
-  if (process.env.MYCHROME_UPLOADS_DIR) {
-    return path.resolve(process.env.MYCHROME_UPLOADS_DIR);
-  }
-  const dataDir = getDataDir();
-  if (fallbackDir && !fs.existsSync(dataDir) && fs.existsSync(fallbackDir)) {
-    return path.join(fallbackDir, "uploads");
-  }
-  const uploads = path.join(dataDir, "uploads");
-  try {
-    if (!fs.existsSync(uploads)) {
-      fs.mkdirSync(uploads, { recursive: true, mode: 448 });
-    }
-  } catch {
-  }
-  return uploads;
-}
-
-// src/upload-manager.ts
-var MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
-var UPLOAD_RESTRICTION_ERROR = "upload_file only accepts files the user attached in the MyChrome panel (they are stored in the MyChrome uploads folder); ask the user to attach the file in the panel and use the path from the attachment.";
-function resolveUploadPaths(paths, uploadsRoot) {
-  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 5) {
-    return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
-  }
-  for (const p of paths) {
-    if (typeof p !== "string" || !p.trim()) {
-      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
-    }
-  }
-  const root = uploadsRoot ?? getUploadsDir();
-  let realRoot;
-  try {
-    if (!fs2.existsSync(root)) {
-      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
-    }
-    realRoot = fs2.realpathSync(root);
-  } catch {
-    return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
-  }
-  const rootForRel = process.platform === "win32" ? realRoot.toLowerCase() : realRoot;
-  const resolvedPaths = [];
-  for (const rawPath of paths) {
-    try {
-      if (!fs2.existsSync(rawPath)) {
-        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
-      }
-      const realFilePath = fs2.realpathSync(rawPath);
-      const stat = fs2.statSync(realFilePath);
-      if (!stat.isFile()) {
-        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
-      }
-      const fileForRel = process.platform === "win32" ? realFilePath.toLowerCase() : realFilePath;
-      const rel = path2.relative(rootForRel, fileForRel);
-      if (rel.startsWith("..") || path2.isAbsolute(rel) || rel === "") {
-        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
-      }
-      resolvedPaths.push(realFilePath);
-    } catch {
-      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
-    }
-  }
-  return { ok: true, paths: resolvedPaths };
-}
+var BRIDGE_VERSION = "1.1.0";
 
 // src/mcp-server.ts
 function formatResultText(res) {
@@ -36704,7 +36624,7 @@ function createMcpServer(wsServer, logger) {
       version: BRIDGE_VERSION
     },
     {
-      instructions: "These tools act live on the user's real Chrome tab and replace any built-in browser tool or browser subagent. The user talks to you from the Antigravity side panel in Chrome and only sees what you send with reply_to_user. When the user runs /mychrome, call connect_side_panel once. Each later side-panel message starts a new turn for you automatically: handle it, finish with reply_to_user(kind='final'), then end your turn. Do not poll for messages unless a tool result tells you to. For tasks with 3 or more steps, show a checklist with update_plan and keep it current. Be fast: each of your turns costs seconds, so use browser_batch for any sequence of actions you can predict, prefer get_page_text and read_page over screenshot, and do not add fixed waits (navigate already waits for the page)."
+      instructions: "These tools act live on the user's real Chrome tab and replace any built-in browser tool or browser subagent. The user talks to you from the Antigravity side panel in Chrome and only sees what you send with reply_to_user. When the user runs /mychrome, call connect_side_panel once. Each later side-panel message starts a new turn for you automatically: handle it, finish with reply_to_user(kind='final'), then end your turn. Do not poll for messages unless a tool result tells you to. For tasks with 3 or more steps, show a checklist with update_plan and keep it current. Be fast: each of your turns costs seconds, so use browser_batch for any sequence of actions you can predict, prefer get_page_text and read_page over screenshot, and do not add fixed waits (navigate already waits for the page). To post media on a social site (Instagram, TikTok, LinkedIn, Facebook, X, YouTube): open the site's create or upload screen, call upload_file with trigger_ref set to the button that opens the file picker (or with no target when the page has a file input), then wait(condition='enabled', value='Next' or the platform's button) while the video processes, and stop before the final Share or Post click unless the user asked you to publish."
     }
   );
   server.tool(
@@ -37025,6 +36945,7 @@ ${interrupts}`);
     {
       tabId: external_exports.number().describe("Tab ID"),
       filter: external_exports.enum(["all", "interactive", "viewport"]).optional().default("interactive").describe("Filter elements ('all', 'interactive', or 'viewport')"),
+      include_hidden: external_exports.boolean().optional().describe("Also list file inputs (input[type=file]) even when the page hides them, with their accept and multiple attributes. Use before upload_file."),
       intent: intentSchema
     },
     async (params) => runBrowserTool("read_page", params, wsServer, logger)
@@ -37035,6 +36956,7 @@ ${interrupts}`);
     {
       tabId: external_exports.number().describe("Tab ID"),
       query: external_exports.string().describe("Text or description to find"),
+      include_hidden: external_exports.boolean().optional().describe("Also return the page's file inputs, even hidden ones (for upload_file)."),
       intent: intentSchema
     },
     async (params) => runBrowserTool("find", params, wsServer, logger)
@@ -37216,31 +37138,41 @@ ${interrupts}`);
     },
     async (params) => runBrowserTool("drag", params, wsServer, logger)
   );
+  const uploadPaths = external_exports.array(external_exports.string()).min(1).max(20).describe(
+    "Absolute paths of the files: attachments from the panel, or files in a folder the user allowed in MyChrome settings. Images, video (mp4, mov, webm...), audio, PDF, text and Office files, up to 4 GB each."
+  );
   server.tool(
     "upload_file",
-    "Acts live on the user's real Chrome tab. Set files on an input[type=file] element via CDP DOM.setFileInputFiles. Paths must be attachment paths from the panel.",
+    "Acts live on the user's real Chrome tab. Puts files into the page's file picker, the way a person picks them from their computer. Chrome reads the files from disk, so large videos work. Pick ONE way to reach the picker: trigger_ref (best for Instagram, TikTok, LinkedIn, Facebook, X, YouTube: the button that opens the picker, such as 'Select from computer'; MyChrome clicks it and catches the picker), ref (a file input from read_page or find with include_hidden), selector (CSS, searched inside open shadow roots and same-origin frames), or nothing (the page's only file input, or the one whose accept fits the files). Returns the file names the page received. Then screenshot or wait(condition='enabled') for the platform's Next/Post button before going on.",
     {
       tabId: external_exports.number().describe("Tab ID"),
-      ref: external_exports.string().describe("File input ref"),
-      paths: external_exports.array(external_exports.string()).describe("Attachment file paths from the panel"),
+      paths: uploadPaths,
+      trigger_ref: external_exports.string().optional().describe("Ref of the button or area that opens the file picker"),
+      ref: external_exports.string().optional().describe("Ref of an input[type=file]"),
+      selector: external_exports.string().optional().describe("CSS selector of an input[type=file]"),
       intent: intentSchema
     },
-    async (params) => {
-      const resolved = resolveUploadPaths(params.paths);
-      if (!resolved.ok) {
-        return withInterrupts(handleError(resolved.error), wsServer);
-      }
-      return runBrowserTool("upload_file", { ...params, paths: resolved.paths }, wsServer, logger);
-    }
+    async (params) => runBrowserTool("upload_file", params, wsServer, logger)
+  );
+  server.tool(
+    "upload_drop",
+    "Acts live on the user's real Chrome tab. Drops files onto an element, like dragging them from the desktop. Use it for upload areas that only accept a drop; prefer upload_file otherwise.",
+    {
+      tabId: external_exports.number().describe("Tab ID"),
+      paths: uploadPaths,
+      target_ref: external_exports.string().describe("Ref of the drop area"),
+      intent: intentSchema
+    },
+    async (params) => runBrowserTool("upload_drop", params, wsServer, logger)
   );
   server.tool(
     "wait",
-    "Acts live on the user's real Chrome tab. Wait for page condition: 'load', 'network_idle', or 'selector'.",
+    "Acts live on the user's real Chrome tab. Wait for a page condition: 'load', 'network_idle', 'selector' (CSS), 'text' (text appears on the page), 'enabled' (a button found by ref or by its text becomes clickable, e.g. 'Next' or 'Post' after a video finishes processing), or 'time'.",
     {
       tabId: external_exports.number().describe("Tab ID"),
-      condition: external_exports.enum(["load", "network_idle", "selector", "time"]).describe("'time' simply waits timeout_ms"),
-      value: external_exports.string().optional().describe("CSS selector if condition is 'selector'"),
-      timeout_ms: external_exports.number().optional().default(1e4).describe("Max wait (or the exact wait for 'time'), in ms"),
+      condition: external_exports.enum(["load", "network_idle", "selector", "text", "enabled", "time"]).describe("'time' simply waits timeout_ms"),
+      value: external_exports.string().optional().describe("CSS selector for 'selector'; the text for 'text'; a ref or the button's text for 'enabled'"),
+      timeout_ms: external_exports.number().optional().default(1e4).describe("Max wait (or the exact wait for 'time'), in ms. Up to 300000 for 'text' and 'enabled' (video processing)."),
       intent: intentSchema
     },
     async (params) => runBrowserTool("wait", params, wsServer, logger)
@@ -37324,6 +37256,7 @@ var BATCHABLE_TOOLS = [
   "form_input",
   "drag",
   "upload_file",
+  "upload_drop",
   "wait",
   "execute_javascript",
   "handle_dialog",

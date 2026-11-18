@@ -34,6 +34,10 @@ import {
   activeElementScript,
   formInputScript,
   selectorExistsScript,
+  markFileInputScript,
+  prepareDropScript,
+  dispatchDropScript,
+  waitProbeScript,
 } from "./bg/page-scripts.js";
 import {
   parseBundledKey,
@@ -52,7 +56,7 @@ import {
   MODES,
 } from "./shared/policy.js";
 
-const BUILD = "1.0.0";
+const BUILD = "1.1.0";
 const PANEL_PORT = "antigravity-sidepanel";
 const BACKOFF_STEPS = [2000, 5000, 15000, 30000, 60000];
 
@@ -336,6 +340,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.allowedProtectedHosts) {
     allowedProtectedHosts = Array.isArray(changes.allowedProtectedHosts.newValue) ? changes.allowedProtectedHosts.newValue : [];
   }
+  if (changes.uploadRoots) {
+    sendUploadRoots(changes.uploadRoots.newValue);
+  }
   if (changes.siteGrants) {
     grantsAlways = Array.isArray(changes.siteGrants.newValue) ? changes.siteGrants.newValue : [];
   }
@@ -454,9 +461,39 @@ setInterval(checkDiskManifest, 30000);
 // ---------------------------------------------------------------------------
 // CDP events
 // ---------------------------------------------------------------------------
+/** The folders the user allowed for uploads (Settings > Safety). The helper checks paths against them. */
+function sendUploadRoots(value) {
+  const roots = (Array.isArray(value) ? value : [])
+    .filter((s) => typeof s === "string" && s.trim())
+    .slice(0, 20);
+  sendToBridge({ type: "upload_roots", roots });
+}
+
+// One-shot waiters for a CDP event on a tab (used for Page.fileChooserOpened).
+const cdpEventWaiters = new Set();
+function waitForCdpEvent(tabId, method, timeoutMs) {
+  let waiter;
+  const promise = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cdpEventWaiters.delete(waiter);
+      reject(new Error("timeout"));
+    }, timeoutMs);
+    waiter = { tabId, method, resolve: (p) => { clearTimeout(timer); resolve(p); } };
+    cdpEventWaiters.add(waiter);
+  });
+  promise.cancel = () => cdpEventWaiters.delete(waiter);
+  return promise;
+}
+
 chrome.debugger.onEvent.addListener((source, method, params) => {
   const tabId = source.tabId;
   if (!tabId) return;
+  for (const w of cdpEventWaiters) {
+    if (w.tabId === tabId && w.method === method) {
+      cdpEventWaiters.delete(w);
+      w.resolve(params);
+    }
+  }
   if (method === "Console.messageAdded") {
     const list = consoleLogsByTab.get(tabId) || [];
     const m = params.message || {};
@@ -1057,6 +1094,10 @@ async function handleServerMessage(msg) {
       failedAttempts = 0;
       reconnectDelay = 1000;
       sendToBridge({ type: "ui_language", lang: currentUiLanguage });
+      // Only once the user has set the list in the panel, so a hand-edited settings file is kept.
+      chrome.storage.local.get("uploadRoots", (r) => {
+        if (Array.isArray(r?.uploadRoots)) sendUploadRoots(r.uploadRoots);
+      });
       notifyPanels({ type: "connection", connected: true, listening: isListeningState, bridgeVersion });
       return;
     }
@@ -1692,7 +1733,7 @@ async function requestApproval({ correlationId, code, host, tool, params, elemen
   if (tool === "execute_javascript" || code === "run_script") {
     const code = String(params?.code || "");
     detail = code.length > 4000 ? `${code.slice(0, 4000)}\n… (${code.length - 4000} more characters not shown)` : code;
-  } else if (tool === "upload_file" || code === "upload") {
+  } else if (tool === "upload_file" || tool === "upload_drop" || code === "upload") {
     const paths = Array.isArray(params?.paths) ? params.paths : [];
     detail = paths.map((p) => String(p).split(/[\\/]/).pop()).join(", ");
   } else if (tool === "navigate") {
@@ -1821,6 +1862,11 @@ async function executeBrowserCommand(correlationId, tool, params) {
       try {
         targetElement = await runInPage(tabId, describeRefScript, [params.ref]);
       } catch {}
+    } else if (tabId && tool === "upload_file" && params.trigger_ref) {
+      // upload_file clicks the trigger: check it like a click (it must not be "Post" or "Pay").
+      try {
+        targetElement = await runInPage(tabId, describeRefScript, [params.trigger_ref]);
+      } catch {}
     } else if (tabId && ["click", "hover"].includes(tool) && hasPoint) {
       try {
         targetElement = await runInPage(tabId, describePointScript, [params.x, params.y]);
@@ -1838,7 +1884,11 @@ async function executeBrowserCommand(correlationId, tool, params) {
     // Fail closed: an action that depends on knowing the element must not run when the element
     // cannot be inspected, or when its ref no longer points at anything.
     const needsElement =
-      Boolean(tabId) && (tool === "press_key" || (tool === "type" && params.ref) || (["click", "form_input"].includes(tool) && (params.ref || hasPoint)));
+      Boolean(tabId) &&
+      (tool === "press_key" ||
+        (tool === "type" && params.ref) ||
+        (["click", "form_input"].includes(tool) && (params.ref || hasPoint)) ||
+        (tool === "upload_file" && params.trigger_ref));
     if (needsElement && (!targetElement || targetElement.found === false)) {
       throw new Error("Could not inspect the target element, so the action was not performed. Try again.");
     }
@@ -2000,9 +2050,9 @@ async function executeBrowserCommand(correlationId, tool, params) {
       const t = await chrome.tabs.get(tabId);
       result = { finalUrl: t.url, title: t.title, loaded };
     } else if (tool === "read_page") {
-      result = (await runInPage(tabId, readPageScript, [params.filter || "interactive"])) || { elements: [] };
+      result = (await runInPage(tabId, readPageScript, [params.filter || "interactive", params.include_hidden === true])) || { elements: [] };
     } else if (tool === "find") {
-      const matches = (await runInPage(tabId, findScript, [String(params.query || "")])) || [];
+      const matches = (await runInPage(tabId, findScript, [String(params.query || ""), params.include_hidden === true])) || [];
       result = { query: params.query, count: matches.length, matches };
     } else if (tool === "get_page_text") {
       result = (await runInPage(tabId, pageTextScript, [params.offset || 0])) || { text: "", offset: 0, total: 0 };
@@ -2136,11 +2186,9 @@ async function executeBrowserCommand(correlationId, tool, params) {
       await sendCDP(tabId, "Input.dispatchMouseEvent", { type: "mouseReleased", x: to.x, y: to.y, button: "left", clickCount: 1 });
       result = { dragged: { from, to } };
     } else if (tool === "upload_file") {
-      const doc = await sendCDP(tabId, "DOM.getDocument");
-      const q = await sendCDP(tabId, "DOM.querySelector", { nodeId: doc.root.nodeId, selector: `[data-antigravity-ref="${params.ref}"]` });
-      if (!q.nodeId) throw new Error(`Could not find the file input '${params.ref}'`);
-      await sendCDP(tabId, "DOM.setFileInputFiles", { files: params.paths, nodeId: q.nodeId });
-      result = { uploaded: (params.paths || []).length + " file(s)" };
+      result = await doUploadFile(tabId, params);
+    } else if (tool === "upload_drop") {
+      result = await doUploadDrop(tabId, params);
     } else if (tool === "wait") {
       result = await doWait(tabId, params);
     } else if (tool === "execute_javascript") {
@@ -2230,9 +2278,163 @@ async function doScroll(tabId, params) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Uploads. Files never pass through the extension: DOM.setFileInputFiles gives Chrome the paths
+// and Chrome reads the files from disk when the page uploads them (large videos work).
+// ---------------------------------------------------------------------------
+const fileExt = (p) => {
+  const m = /\.[A-Za-z0-9]+$/.exec(String(p).split(/[\\/]/).pop() || "");
+  return m ? m[0].toLowerCase() : "";
+};
+const fileName = (p) => String(p).split(/[\\/]/).pop();
+
+/** backendNodeId of the element marked data-mychrome-upload=token (pierces shadow roots and frames). */
+async function findMarkedNode(tabId, token) {
+  const doc = await sendCDP(tabId, "DOM.getDocument", { depth: -1, pierce: true });
+  const stack = [doc.root];
+  while (stack.length) {
+    const n = stack.pop();
+    const attrs = n.attributes || [];
+    for (let i = 0; i < attrs.length; i += 2) {
+      if (attrs[i] === "data-mychrome-upload" && attrs[i + 1] === token) return n.backendNodeId;
+    }
+    if (n.children) stack.push(...n.children);
+    if (n.shadowRoots) stack.push(...n.shadowRoots);
+    if (n.contentDocument) stack.push(n.contentDocument);
+    if (n.templateContent) stack.push(n.templateContent);
+  }
+  return null;
+}
+
+/** The files the input now holds, read back from the page, and the mark removed. */
+async function readInputFiles(tabId, backendNodeId) {
+  try {
+    const { object } = await sendCDP(tabId, "DOM.resolveNode", { backendNodeId });
+    const res = await sendCDP(tabId, "Runtime.callFunctionOn", {
+      objectId: object.objectId,
+      functionDeclaration:
+        "function () { this.removeAttribute('data-mychrome-upload'); return [...(this.files || [])].map((f) => ({ name: f.name, sizeMB: Math.round(f.size / 1048576 * 10) / 10, type: f.type })); }",
+      returnByValue: true,
+    });
+    sendCDP(tabId, "Runtime.releaseObject", { objectId: object.objectId }).catch(() => {});
+    return res.result?.value || [];
+  } catch {
+    return null;
+  }
+}
+
+async function doUploadFile(tabId, params) {
+  const paths = Array.isArray(params.paths) ? params.paths : [];
+  if (!paths.length) throw new Error("upload_file needs paths.");
+  await attachDebugger(tabId);
+
+  let backendNodeId = null;
+  let via = "";
+  if (params.trigger_ref) {
+    // Catch the picker the trigger opens instead of showing it to the user.
+    // Chrome opens a file picker only for the tab in front: in a background tab the click never
+    // completes. Bring the tab forward first (the user sees the upload happen).
+    const tabNow = await chrome.tabs.get(tabId);
+    if (!tabNow.active) {
+      await chrome.tabs.update(tabId, { active: true });
+      noteAgentActivated(tabId);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    const res = await runInPage(tabId, resolveClickScript, [params.trigger_ref]);
+    if (!res || res.error) throw new Error(res?.error || `Element with ref '${params.trigger_ref}' not found`);
+    await ensureContentScript(tabId);
+    const opened = waitForCdpEvent(tabId, "Page.fileChooserOpened", 8000);
+    opened.catch(() => {});
+    await sendCDP(tabId, "Page.setInterceptFileChooserDialog", { enabled: true });
+    try {
+      await glideCursor(tabId, "SHOW_CLICK_CUE", res.x, res.y);
+      // The click resolves once the page handled it; never let a stuck page hold the upload.
+      const click = (async () => {
+        await sendCDP(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x: res.x, y: res.y });
+        await sendCDP(tabId, "Input.dispatchMouseEvent", { type: "mousePressed", x: res.x, y: res.y, button: "left", clickCount: 1 });
+        await sendCDP(tabId, "Input.dispatchMouseEvent", { type: "mouseReleased", x: res.x, y: res.y, button: "left", clickCount: 1 });
+      })();
+      click.catch(() => {});
+      await Promise.race([click, opened.catch(() => {}), new Promise((r) => setTimeout(r, 8000))]);
+      let ev;
+      try {
+        ev = await opened;
+      } catch {
+        throw new Error(
+          `Clicking '${res.name || params.trigger_ref}' did not open a file picker within 8 s. Take a screenshot: the platform may need another step first, or call upload_file without trigger_ref to use its file input.`
+        );
+      }
+      if (!ev.backendNodeId) throw new Error("The page opened a picker MyChrome cannot fill (not a file input). Try upload_drop on the upload area.");
+      if (ev.mode === "selectSingle" && paths.length > 1) throw new Error("This picker takes one file at a time. Upload one file, then add the next.");
+      backendNodeId = ev.backendNodeId;
+      via = "file picker";
+      await sendCDP(tabId, "DOM.setFileInputFiles", { files: paths, backendNodeId });
+    } finally {
+      opened.cancel();
+      await Promise.race([
+        sendCDP(tabId, "Page.setInterceptFileChooserDialog", { enabled: false }).catch(() => {}),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
+    }
+  } else {
+    const mark = await runInPage(tabId, markFileInputScript, [{ ref: params.ref, selector: params.selector, exts: paths.map(fileExt) }]);
+    if (!mark || mark.error) throw new Error(mark?.error || "Could not find a file input on this page.");
+    if (!mark.multiple && paths.length > 1) throw new Error("This file input takes one file. Upload one file, or find an input marked multiple.");
+    backendNodeId = await findMarkedNode(tabId, mark.token);
+    if (!backendNodeId) throw new Error("Found the file input but could not reach it. Try again, or use trigger_ref.");
+    via = "file input";
+    await sendCDP(tabId, "DOM.setFileInputFiles", { files: paths, backendNodeId });
+    if (mark.fits === false) via += " (its accept attribute does not list this file type; check the page)";
+  }
+
+  // Chrome fires input and change itself. Give the page a moment to show its preview.
+  await new Promise((r) => setTimeout(r, 700));
+  const files = await readInputFiles(tabId, backendNodeId);
+  return {
+    uploaded: paths.map(fileName),
+    via,
+    pageReceived: files,
+    next: "Take a screenshot to check the preview, then wait(condition='enabled', value='Next') or the platform's button while it processes.",
+  };
+}
+
+async function doUploadDrop(tabId, params) {
+  const paths = Array.isArray(params.paths) ? params.paths : [];
+  if (!paths.length) throw new Error("upload_drop needs paths.");
+  if (!params.target_ref) throw new Error("upload_drop needs target_ref (the drop area).");
+  await attachDebugger(tabId);
+  const prep = await runInPage(tabId, prepareDropScript, [params.target_ref]);
+  if (!prep || prep.error) throw new Error(prep?.error || "Could not prepare the drop.");
+  const backendNodeId = await findMarkedNode(tabId, prep.token);
+  if (!backendNodeId) throw new Error("Could not prepare the drop. Try again.");
+  await sendCDP(tabId, "DOM.setFileInputFiles", { files: paths, backendNodeId });
+  const res = await runInPage(tabId, dispatchDropScript, [prep.token, params.target_ref]);
+  if (!res || res.error) throw new Error(res?.error || "The drop failed.");
+  await new Promise((r) => setTimeout(r, 700));
+  return {
+    dropped: res.dropped,
+    pageHandledDrop: res.accepted,
+    next: res.accepted
+      ? "Take a screenshot to check the preview."
+      : "The page did not react to the drop. Try upload_file (trigger_ref or the page's file input) instead.",
+  };
+}
+
 async function doWait(tabId, params) {
   const cond = params.condition;
-  const timeoutMs = Math.min(Math.max(params.timeout_ms || 10000, 100), 60000);
+  const maxMs = cond === "text" || cond === "enabled" ? 300000 : 60000;
+  const timeoutMs = Math.min(Math.max(params.timeout_ms || 10000, 100), maxMs);
+  if (cond === "text" || cond === "enabled") {
+    const t0 = Date.now();
+    let last = null;
+    while (Date.now() - t0 < timeoutMs) {
+      last = await runInPage(tabId, waitProbeScript, [cond, params.value]).catch(() => null);
+      if (last?.ok) return { condition: cond, value: params.value, met: true, waitedMs: Date.now() - t0 };
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    const why = cond === "enabled" && last && last.found === false ? " (no button with that ref or text was found)" : "";
+    throw new Error(`'${params.value}' was not ${cond === "text" ? "on the page" : "clickable"} within ${Math.round(timeoutMs / 1000)} s${why}.`);
+  }
   if (cond === "time") {
     await new Promise((r) => setTimeout(r, timeoutMs));
     return { condition: "time", waitedMs: timeoutMs };

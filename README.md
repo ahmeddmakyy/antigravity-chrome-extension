@@ -26,6 +26,7 @@ MyChrome is a free, unofficial extension for Google Antigravity. Version 1.0.
 - **Asks before it acts.** Approve a plan's sites once instead of site by site. It asks before anything you can't undo, like sending, paying or deleting, never types passwords or card numbers, and stays away from banking and payment sites unless you allow them.
 - **Fast.** It batches steps it can predict, reads pages in a compact form, and doesn't wait for every ad to load.
 - **Pick the model.** Gemini 4 Hydrogen by default, or Argon, Carbon, Gemini 3.8 Flash, Claude Sonnet 5.5 or Opus 5.5, for the chats you start from the panel.
+- **Posts your media.** It can put photos and videos (up to 4 GB) into Instagram, TikTok, LinkedIn, Facebook, X or YouTube upload screens, from the panel or from folders you allow in Settings, and stops before Share unless you tell it to publish.
 - **Saves you typing.** Type `/` for your saved prompts, set standing instructions once, select text in an answer to quote it, and attach files or a screenshot of the tab.
 - **Stays out of the way.** Notifications only when Chrome is in the background, Alt+Shift+M to open the panel, English and Arabic, light and dark.
 - **Helps you debug.** It reads the console errors and failed network requests of the tab you are testing.
@@ -141,6 +142,7 @@ Built by Ahmed Maky.
 - **بيستأذن قبل ما يتصرف.** توافق على مواقع الخطة مرة واحدة بدل كل موقع لوحده. وبيسألك قبل أي حاجة ما ينفعش ترجع فيها زي الإرسال أو الدفع أو الحذف، وعمره ما بيكتب باسوردات أو أرقام كروت، وبيبعد عن مواقع البنوك والدفع إلا لو انت سمحت.
 - **سريع.** بيجمّع الخطوات اللي يقدر يتوقعها، وبيقرا الصفحات بشكل مختصر، ومش بيستنى كل الإعلانات تحمّل.
 - **اختار الموديل.** الافتراضي Gemini 4 Hydrogen، ومعاه Argon وCarbon وGemini 3.8 Flash وClaude Sonnet 5.5 وOpus 5.5، للمحادثات اللي بتبدأها من الشريط.
+- **بينزّل بوستاتك.** يقدر يرفع صور وفيديوهات (لحد 4 جيجا) في صفحات الرفع بتاعة إنستجرام وتيك توك ولينكدإن وفيسبوك وX ويوتيوب، من الشريط أو من فولدرات انت بتسمح بيها في الإعدادات، وبيقف قبل Share إلا لو قلتله ينشر.
 - **بيوفّر عليك الكتابة.** اكتب `/` لطلباتك المحفوظة، وحط تعليمات ثابتة مرة واحدة، وحدد كلام في الرد عشان تقتبسه، وارفق ملفات أو صورة للتاب.
 - **مش بيزعجك.** الإشعارات بس لما Chrome يكون في الخلفية، وAlt+Shift+M بيفتح الشريط، وفيه عربي وإنجليزي وفاتح وغامق.
 

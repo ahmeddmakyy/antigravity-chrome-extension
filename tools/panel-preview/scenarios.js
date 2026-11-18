@@ -22,8 +22,9 @@
   }
   // Stills: no typewriter or entrance motion, and no live update check against GitHub.
   if (qs.has("still")) {
-    localStorage.setItem("ag_reduce_motion", "1");
-    chrome.storage.local.set({ reduceMotion: true });
+    // The panel follows the system's reduced-motion setting; report it as on.
+    const realMatch = window.matchMedia.bind(window);
+    window.matchMedia = (q) => (String(q).includes("prefers-reduced-motion") ? { matches: true, media: q, addEventListener() {}, removeEventListener() {} } : realMatch(q));
   }
   const realFetch = window.fetch.bind(window);
   window.fetch = (url, opts) => (String(url).includes("api.github.com") ? Promise.resolve(new Response("{}", { status: 404 })) : realFetch(url, opts));
@@ -41,21 +42,23 @@
     st.textContent = "*, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; transition: none !important; }";
     document.head.appendChild(st);
   }
+  // ?mode=auto shows the composer in Auto mode.
+  if (qs.get("mode") === "auto") chrome.storage.local.set({ approvalMode: "auto" });
   // Sample saved shortcuts for the "/" picker.
   chrome.storage.local.set({ shortcuts: [{ id: "s1", name: "summary", prompt: "Summarize this page in 5 bullet points" }, { id: "s2", name: "prices", prompt: "Make a table of every price on this page" }] });
   const now = Date.now();
   const linked = { mode: "push", linked: true, linkedId: "a1cefeac", linkedAt: now - 3600e3, setupDone: true, hooks: true, waker: true, busy: false };
   const sync = (extra = {}) => ({
     type: "state_sync",
-    build: "1.0.0",
-    bridgeVersion: "1.0.0",
+    build: "1.1.0",
+    bridgeVersion: "1.1.0",
     connected: true,
     listening: false,
     pairingRequired: false,
     agentStatus: linked,
     taskState: "idle",
     history: [],
-    approvalMode: "ask",
+    approvalMode: qs.get("mode") === "auto" ? "auto" : "ask",
     protectSensitiveSites: true,
     grantsAlways: [],
     pendingApprovals: [],

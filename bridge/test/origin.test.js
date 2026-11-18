@@ -110,7 +110,7 @@ test("Origin-based authentication and allowlist", async (t) => {
       });
 
       assert.equal(authOk.type, "auth_ok");
-      assert.equal(authOk.bridgeVersion, "1.0.0");
+      assert.equal(authOk.bridgeVersion, "1.1.0");
     } finally {
       if (ws) ws.close();
     }

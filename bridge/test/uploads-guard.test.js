@@ -66,7 +66,7 @@ test("Uploads Guard - Security & Validation Tests", async (t) => {
     const res = resolveUploadPaths([tmpUploadsDir], tmpUploadsDir);
     assert.equal(res.ok, false);
     if (!res.ok) {
-      assert.equal(res.error, UPLOAD_RESTRICTION_ERROR);
+      assert.match(res.error, /Not a file|only accept files/);
     }
 
     const subDir = path.join(tmpUploadsDir, "subdir");
@@ -74,7 +74,7 @@ test("Uploads Guard - Security & Validation Tests", async (t) => {
     const subRes = resolveUploadPaths([subDir], tmpUploadsDir);
     assert.equal(subRes.ok, false);
     if (!subRes.ok) {
-      assert.equal(subRes.error, UPLOAD_RESTRICTION_ERROR);
+      assert.match(subRes.error, /Not a file/);
     }
   });
 
@@ -83,13 +83,13 @@ test("Uploads Guard - Security & Validation Tests", async (t) => {
     const res = resolveUploadPaths([missing], tmpUploadsDir);
     assert.equal(res.ok, false);
     if (!res.ok) {
-      assert.equal(res.error, UPLOAD_RESTRICTION_ERROR);
+      assert.match(res.error, /File not found/);
     }
   });
 
-  await t.test("resolveUploadPaths rejects more than 5 paths", () => {
+  await t.test("resolveUploadPaths rejects more than 20 paths", () => {
     const files = [];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 21; i++) {
       const f = path.join(tmpUploadsDir, `file_${i}.txt`);
       fs.writeFileSync(f, `data ${i}`);
       files.push(f);
@@ -97,8 +97,9 @@ test("Uploads Guard - Security & Validation Tests", async (t) => {
     const res = resolveUploadPaths(files, tmpUploadsDir);
     assert.equal(res.ok, false);
     if (!res.ok) {
-      assert.equal(res.error, UPLOAD_RESTRICTION_ERROR);
+      assert.match(res.error, /At most 20 files/);
     }
+    assert.equal(resolveUploadPaths(files.slice(0, 20), tmpUploadsDir).ok, true);
   });
 
   await t.test("resolveUploadPaths rejects a non-array and an empty array", () => {

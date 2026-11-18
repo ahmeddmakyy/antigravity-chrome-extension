@@ -3,6 +3,31 @@
 All notable changes to MyChrome are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-11-19
+
+### Added
+
+- Uploading media to social sites. The agent can put photos and videos into the upload screens of Instagram, TikTok, LinkedIn, Facebook, X, YouTube and other sites:
+  - `upload_file` can click the button that opens the file picker (`trigger_ref`), catch the picker and give it the files, the way the sites expect. It also reaches hidden file inputs, inputs inside shadow DOM and same-origin frames, or picks the page's input whose type fits the files.
+  - `upload_drop` drops files on areas that only accept drag and drop.
+  - `read_page` and `find` list hidden file inputs with `include_hidden`.
+  - `wait` can wait for text to appear or for a button such as Next to become clickable while a video processes (up to 5 minutes).
+- Video, audio and more image types (mp4, mov, webm, heic...), up to 4 GB per file and 20 files at a time. Chrome reads the files from disk; MyChrome never copies them.
+- Settings > Safety > "Folders the agent can upload from": the agent can upload files from these folders as well as files attached in the panel. Paths are checked after links and `..` are resolved, and anything outside is refused. `MYCHROME_UPLOAD_ROOTS` (folders separated by `;`) adds folders too.
+
+### Fixed
+
+- The side panel fits any width Chrome allows (down to about 300 px). Before, a narrow panel cut off the header buttons, the message box and the footer.
+- The approval mode button is an icon in both modes (Auto is the filled one), which leaves more room in the message box.
+- The tip under an answer and the About card no longer break awkwardly in a narrow panel.
+- The message box shows its hint on one line, without a scroll bar when it is empty.
+- The Windows installer stops the running helper on Windows builds that report its socket without a state. Before, the old helper kept running after an update.
+
+### Changed
+
+- Settings are in a clearer order: Agent, Preferences, Safety, Connection, Diagnostic log, About. The second group named "Agent" is now "Preferences".
+- The panel's own "Reduce motion" switch is gone. The panel follows your system's reduced-motion setting instead.
+
 ## [1.0.0] - 2026-11-18
 
 First public release.

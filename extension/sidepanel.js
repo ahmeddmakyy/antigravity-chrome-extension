@@ -88,7 +88,7 @@ function hydrateIcons(root = document) {
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-const PANEL_BUILD = "1.0.0";
+const PANEL_BUILD = "1.1.0";
 const QUIET_AFTER_MS = 90000;
 
 const params = new URLSearchParams(location.search);
@@ -137,8 +137,8 @@ const SUGGESTIONS = [
 ];
 
 const uiDir = () => (state.lang === "ar" ? "rtl" : "ltr");
-const reduceMotion = () =>
-  document.documentElement.classList.contains("reduce-motion") || matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Follows the system setting only (Windows: Settings > Accessibility > Visual effects).
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---------------------------------------------------------------------------
 // Shared turn model (same reducer as the background worker)
@@ -1883,8 +1883,8 @@ function applyApprovalMode(mode) {
     btn.classList.toggle("is-auto", isAuto);
     const iconSpan = btn.querySelector(".mode-btn-icon");
     if (iconSpan) iconSpan.innerHTML = icon(isAuto ? "fast-forward" : "hand");
-    const labelSpan = $("modeBtnLabel");
-    if (labelSpan) labelSpan.textContent = isAuto ? t("modeAutoShort") : "";
+    // Icon only in both modes (saves room in the composer); the name is for screen readers.
+    btn.setAttribute("aria-label", t(isAuto ? "modeAuto" : "modeManual"));
   }
   const manualItem = $("modeManualBtn");
   const autoItem = $("modeAutoBtn");
@@ -2688,6 +2688,7 @@ function autosize() {
   const el = $("input");
   el.style.height = "auto";
   el.style.height = Math.min(el.scrollHeight, 150) + "px";
+  el.classList.toggle("scrolls", el.scrollHeight > 150);
 }
 
 // ---------------------------------------------------------------------------
@@ -3003,7 +3004,7 @@ function loadSettings() {
       "bridgePort",
       "pairingToken",
       "blocklist",
-      "reduceMotion",
+      "uploadRoots",
       "approvalMode",
       "protectSensitiveSites",
       "allowedProtectedHosts",
@@ -3020,8 +3021,7 @@ function loadSettings() {
       if ($("portInput")) $("portInput").value = res.bridgePort || 8765;
       if ($("tokenInput")) $("tokenInput").value = res.pairingToken || "";
       if ($("blocklistInput")) $("blocklistInput").value = res.blocklist || "";
-      if ($("motionSwitch")) $("motionSwitch").checked = Boolean(res.reduceMotion);
-      applyMotion(Boolean(res.reduceMotion));
+      if ($("uploadRootsInput")) $("uploadRootsInput").value = (Array.isArray(res.uploadRoots) ? res.uploadRoots : []).join("\n");
       if ($("protectSwitch")) $("protectSwitch").checked = res.protectSensitiveSites !== false;
       if ($("allowProtectedInput")) {
         const arr = Array.isArray(res.allowedProtectedHosts) ? res.allowedProtectedHosts : [];
@@ -3031,11 +3031,9 @@ function loadSettings() {
       applyApprovalMode(res.approvalMode || "manual");
     }
   );
+  // The panel's own "Reduce motion" switch was removed in 1.0.2; drop what it saved.
+  chrome.storage?.local?.remove?.("reduceMotion");
   checkVersions();
-}
-function applyMotion(reduce) {
-  document.documentElement.classList.toggle("reduce-motion", reduce);
-  localStorage.setItem("ag_reduce_motion", reduce ? "1" : "0");
 }
 function saveSetting(key, value) {
   chrome.storage.local.set({ [key]: value }, () => toast(t("saved")));
@@ -3136,13 +3134,18 @@ function bindEvents() {
   $("tokenInput").addEventListener("change", (e) => saveSetting("pairingToken", e.target.value.trim()));
   $("blocklistInput").addEventListener("change", (e) => saveSetting("blocklist", e.target.value.trim()));
   $("protectSwitch")?.addEventListener("change", (e) => saveSetting("protectSensitiveSites", e.target.checked));
+  // Folders the agent may upload from: one full path per line (or separated by ";").
+  $("uploadRootsInput")?.addEventListener("change", (e) => {
+    const list = e.target.value
+      .split(/[\n;]/)
+      .map((s) => s.trim().replace(/^"(.*)"$/, "$1"))
+      .filter((s) => /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(s));
+    e.target.value = list.join("\n");
+    saveSetting("uploadRoots", [...new Set(list)].slice(0, 20));
+  });
   $("allowProtectedInput")?.addEventListener("change", (e) => {
     const list = e.target.value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
     saveSetting("allowedProtectedHosts", list);
-  });
-  $("motionSwitch").addEventListener("change", (e) => {
-    applyMotion(e.target.checked);
-    saveSetting("reduceMotion", e.target.checked);
   });
   $("clearChatBtn").addEventListener("click", newChat);
 

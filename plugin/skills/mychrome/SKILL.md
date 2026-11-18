@@ -74,6 +74,23 @@ Every turn you take costs several seconds, far more than any browser action.
 - `execute_javascript` accepts a top-level `return`. Errors come back as tool errors with the real message.
 - Refs (e1, e2...) change when the page changes: call `read_page` or `find` again after navigation.
 
+## Uploading media (posts on Instagram, TikTok, LinkedIn, Facebook, X, YouTube)
+
+- Files must come from the panel (attachments) or from a folder the user listed in MyChrome settings
+  (Safety > Folders the agent can upload from). Images, video (mp4, mov, webm...), audio, PDF and Office
+  files, up to 4 GB each. If a path is refused, ask the user to add its folder there.
+- Open the platform's create or upload screen, then call `upload_file` with `trigger_ref` set to the
+  button that opens the file picker ("Select from computer", "Select video", "Add media"). MyChrome
+  brings the tab to the front, clicks it, catches the picker and gives it the files.
+- Without `trigger_ref`, `upload_file` uses the page's file input: pass `ref` or `selector`, or nothing
+  to pick the input whose `accept` fits the files. `read_page(include_hidden=true)` lists hidden file
+  inputs, also inside shadow roots and frames.
+- `upload_drop` drops files on an area that only accepts drag and drop.
+- After the upload, `wait(condition='enabled', value='Next')` (or the platform's button) while the video
+  processes, up to 300000 ms. Then fill the caption.
+- Stop before the final Share, Post or Publish click unless the user clearly asked you to publish; then
+  confirm with `request_confirmation` first.
+
 ## Hard rules
 
 - Use only `mychrome` tools for the browser. Never use browser_subagent,

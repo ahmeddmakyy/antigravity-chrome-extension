@@ -3771,6 +3771,12 @@ function getLogsDir(fallbackDir) {
   }
   return logs;
 }
+function getSettingsPath() {
+  if (process.env.MYCHROME_SETTINGS_FILE) {
+    return path.resolve(process.env.MYCHROME_SETTINGS_FILE);
+  }
+  return path.join(getDataDir(), "settings.json");
+}
 function getUploadsDir(fallbackDir) {
   if (process.env.MYCHROME_UPLOADS_DIR) {
     return path.resolve(process.env.MYCHROME_UPLOADS_DIR);
@@ -3971,7 +3977,7 @@ import path5 from "path";
 import { fileURLToPath } from "url";
 
 // src/version.ts
-var BRIDGE_VERSION = "1.0.0";
+var BRIDGE_VERSION = "1.1.0";
 
 // src/constants.ts
 var EXTENSION_ID = "aeofpcedejopeeebdjfkapcabkkflhej";
@@ -4047,42 +4053,127 @@ var ALLOWED_EXTENSIONS = /* @__PURE__ */ new Set([
   ".xlsx",
   ".pptx"
 ]);
-var UPLOAD_RESTRICTION_ERROR = "upload_file only accepts files the user attached in the MyChrome panel (they are stored in the MyChrome uploads folder); ask the user to attach the file in the panel and use the path from the attachment.";
-function resolveUploadPaths(paths, uploadsRoot) {
-  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 5) {
+var UPLOAD_RESTRICTION_ERROR = "upload_file and upload_drop only accept files from the folders the user allowed: files attached in the MyChrome panel, and the upload folders listed in MyChrome settings (Safety > Folders the agent can upload from). Ask the user to attach the file in the panel, or to add its folder to that list.";
+var MAX_PATH_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
+var MAX_PATH_UPLOAD_FILES = 20;
+var PATH_UPLOAD_EXTENSIONS = /* @__PURE__ */ new Set([
+  ...ALLOWED_EXTENSIONS,
+  // more images
+  ".heic",
+  ".heif",
+  ".avif",
+  ".bmp",
+  ".tif",
+  ".tiff",
+  // video
+  ".mp4",
+  ".mov",
+  ".m4v",
+  ".webm",
+  ".avi",
+  ".mkv",
+  ".mpeg",
+  ".mpg",
+  ".3gp",
+  // audio
+  ".mp3",
+  ".m4a",
+  ".wav",
+  ".aac",
+  ".ogg",
+  // subtitles and documents platforms accept next to media
+  ".srt",
+  ".vtt",
+  ".doc",
+  ".ppt",
+  ".xls"
+]);
+function readHelperSettings() {
+  try {
+    const raw = fs4.readFileSync(getSettingsPath(), "utf8");
+    const parsed = JSON.parse(raw.replace(/^﻿/, ""));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function cleanUploadRoots(list) {
+  const raw = Array.isArray(list) ? list : typeof list === "string" ? list.split(/[;\n]/) : [];
+  const out = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const p = item.trim().replace(/^"(.*)"$/, "$1");
+    if (!p || !path4.isAbsolute(p)) continue;
+    const norm = path4.resolve(p);
+    if (!out.some((o) => process.platform === "win32" ? o.toLowerCase() === norm.toLowerCase() : o === norm)) out.push(norm);
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+function saveUploadRoots(list) {
+  const roots = cleanUploadRoots(list);
+  const file = getSettingsPath();
+  const current = readHelperSettings();
+  const next = { ...current, uploadRoots: roots };
+  fs4.mkdirSync(path4.dirname(file), { recursive: true, mode: 448 });
+  const tmp = `${file}.tmp.${process.pid}`;
+  fs4.writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n", { mode: 384 });
+  fs4.renameSync(tmp, file);
+  return roots;
+}
+function getUploadRoots() {
+  return [
+    getUploadsDir(),
+    ...cleanUploadRoots(process.env.MYCHROME_UPLOAD_ROOTS || ""),
+    ...cleanUploadRoots(readHelperSettings().uploadRoots)
+  ];
+}
+var fold = (p) => process.platform === "win32" ? p.toLowerCase() : p;
+function resolveUploadPaths(paths, roots) {
+  if (!Array.isArray(paths) || paths.length === 0) {
     return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  }
+  if (paths.length > MAX_PATH_UPLOAD_FILES) {
+    return { ok: false, error: `At most ${MAX_PATH_UPLOAD_FILES} files can be uploaded at once.` };
   }
   for (const p of paths) {
     if (typeof p !== "string" || !p.trim()) {
       return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
     }
   }
-  const root = uploadsRoot ?? getUploadsDir();
-  let realRoot;
-  try {
-    if (!fs4.existsSync(root)) {
-      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  const realRoots = [];
+  for (const root of roots === void 0 ? getUploadRoots() : [].concat(roots)) {
+    try {
+      if (fs4.existsSync(root) && fs4.statSync(root).isDirectory()) realRoots.push(fold(fs4.realpathSync(root)));
+    } catch {
     }
-    realRoot = fs4.realpathSync(root);
-  } catch {
-    return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
   }
-  const rootForRel = process.platform === "win32" ? realRoot.toLowerCase() : realRoot;
+  if (realRoots.length === 0) return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
   const resolvedPaths = [];
   for (const rawPath of paths) {
+    const shown = path4.basename(rawPath);
     try {
       if (!fs4.existsSync(rawPath)) {
-        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+        return { ok: false, error: `File not found: ${rawPath}` };
       }
       const realFilePath = fs4.realpathSync(rawPath);
       const stat = fs4.statSync(realFilePath);
       if (!stat.isFile()) {
+        return { ok: false, error: `Not a file: ${rawPath}` };
+      }
+      const inside = realRoots.some((root) => {
+        const rel = path4.relative(root, fold(realFilePath));
+        return rel !== "" && !rel.startsWith("..") && !path4.isAbsolute(rel);
+      });
+      if (!inside) {
         return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
       }
-      const fileForRel = process.platform === "win32" ? realFilePath.toLowerCase() : realFilePath;
-      const rel = path4.relative(rootForRel, fileForRel);
-      if (rel.startsWith("..") || path4.isAbsolute(rel) || rel === "") {
-        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      const ext = path4.extname(realFilePath).toLowerCase();
+      if (!PATH_UPLOAD_EXTENSIONS.has(ext)) {
+        return { ok: false, error: `${shown}: this file type (${ext || "no extension"}) cannot be uploaded. Images, video, audio, PDF, text and Office files can.` };
+      }
+      if (stat.size > MAX_PATH_UPLOAD_BYTES) {
+        return { ok: false, error: `${shown} is larger than 4 GB.` };
       }
       resolvedPaths.push(realFilePath);
     } catch {
@@ -4736,6 +4827,15 @@ var BridgeWSServer = class {
           const name = lang === "en" ? "English" : "Arabic (Egyptian)";
           this.pendingLanguageNote = `The user switched the side panel to ${name}. From now on write every intent, progress update and plan step in ${name}.`;
         }
+      }
+      return;
+    }
+    if (msg.type === "upload_roots") {
+      try {
+        const roots = saveUploadRoots(msg.roots);
+        this.logger.info(`[Uploads] ${roots.length} upload folder(s) allowed by the user.`);
+      } catch (err) {
+        this.logger.warn(`[Uploads] Could not save the upload folders: ${err.message}`);
       }
       return;
     }
@@ -5817,6 +5917,7 @@ var BridgeWSServer = class {
       case "drag":
         return isAr ? `\u0633\u062D\u0628 \u0648\u0625\u0641\u0644\u0627\u062A` : `Dragging`;
       case "upload_file":
+      case "upload_drop":
         return isAr ? `\u0631\u0641\u0639 \u0645\u0644\u0641` : `Uploading file`;
       case "wait":
         return isAr ? `\u0627\u0646\u062A\u0638\u0627\u0631...` : `Waiting...`;
@@ -6033,7 +6134,7 @@ var BridgeWSServer = class {
         "stopped_by_user: the user pressed Stop in the side panel. Do not call more browser tools. Send one short reply_to_user(kind='final') and end your turn."
       );
     }
-    if (tool === "upload_file") {
+    if (tool === "upload_file" || tool === "upload_drop") {
       const resolved = resolveUploadPaths(params.paths);
       if (!resolved.ok) {
         throw new Error(resolved.error);

@@ -1,7 +1,7 @@
 import { createRequire as __createRequire } from 'module'; const require = __createRequire(import.meta.url);
 
 // src/version.ts
-var BRIDGE_VERSION = "1.0.0";
+var BRIDGE_VERSION = "1.1.0";
 export {
   BRIDGE_VERSION
 };

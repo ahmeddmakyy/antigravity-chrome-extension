@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<!--
+  MyChrome (c) 2026 Ahmed Maky. All rights reserved. Proprietary software; see LICENSE.
+  Side-panel preview at several widths at once, for checking the responsive layout.
+  Usage: /tools/panel-preview/widths.html?w=300,360,440&h=780&<any index.html params>
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MyChrome panel widths</title>
+  <style>
+    body { margin: 0; padding: 16px; background: #888; display: flex; gap: 16px; align-items: flex-start; font: 12px system-ui; }
+    figure { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+    figcaption { color: #fff; font-weight: 600; }
+    iframe { border: 0; background: #fff; display: block; }
+  </style>
+</head>
+<body>
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const widths = (qs.get("w") || "300,360,440").split(",").map(Number);
+    const h = Number(qs.get("h") || 780);
+    qs.delete("w"); qs.delete("h");
+    for (const w of widths) {
+      const fig = document.createElement("figure");
+      const cap = document.createElement("figcaption");
+      cap.textContent = `${w}px`;
+      const f = document.createElement("iframe");
+      f.width = w; f.height = h;
+      f.src = `/?${qs.toString()}`;
+      fig.append(cap, f);
+      document.body.append(fig);
+    }
+  </script>
+</body>
+</html>

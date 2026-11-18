@@ -17,5 +17,5 @@ try {
   document.documentElement.setAttribute("data-theme", theme);
   document.documentElement.setAttribute("lang", localStorage.getItem("ag_lang") || "ar");
   document.documentElement.setAttribute("dir", "ltr");
-  if (localStorage.getItem("ag_reduce_motion") === "1") document.documentElement.classList.add("reduce-motion");
+  localStorage.removeItem("ag_reduce_motion");
 } catch (e) {}

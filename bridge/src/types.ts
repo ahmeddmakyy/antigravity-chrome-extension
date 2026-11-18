@@ -130,6 +130,7 @@ export type WSClientMessage =
   | { type: "ui_language"; lang: string }
   | { type: "get_bridge_log" }
   | { type: "reset_link" }
+  | { type: "upload_roots"; roots?: unknown }
   | { type: "ping" };
 
 export type WSServerMessage =

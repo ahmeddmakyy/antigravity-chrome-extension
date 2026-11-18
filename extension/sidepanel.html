@@ -154,7 +154,6 @@
           <div class="mode-wrap" id="modeWrap">
             <button class="mini-btn mode-btn" id="modeBtn" type="button" aria-haspopup="menu" aria-expanded="false" data-i18n-title="modeBtnTitle">
               <span class="mode-btn-icon" data-icon="hand"></span>
-              <span class="mode-btn-label" id="modeBtnLabel"></span>
             </button>
             <div class="attach-menu mode-menu" id="modeMenu" role="menu" hidden>
               <button type="button" class="attach-menu-item" id="modeManualBtn" role="menuitemradio" aria-checked="true">
@@ -205,47 +204,15 @@
           <button class="pill-btn" id="copySetupBtn" type="button"><span data-icon="terminal"></span><span data-i18n="copySetup"></span></button>
         </div>
 
-        <div class="group log-group">
-          <div class="group-head">
-            <span class="group-icon" data-icon="log"></span>
-            <div>
-              <h3 data-i18n="grpLog"></h3>
-              <p class="group-help" dir="auto" data-i18n="logHelp"></p>
-            </div>
-          </div>
-          <button class="rec-toggle" id="recToggle" type="button" aria-pressed="false">
-            <span class="rec-dot" aria-hidden="true"></span>
-            <span class="rec-label" id="recLabel"></span>
-            <span class="rec-time" id="recTime"></span>
-          </button>
-          <p class="rec-meta" id="recMeta" dir="auto"></p>
-          <div class="tiles">
-            <button class="tile" id="logViewBtn" type="button"><span class="tile-ic" data-icon="list"></span><span data-i18n="logView"></span></button>
-            <button class="tile" id="logCopyBtn" type="button"><span class="tile-ic" data-icon="copy"></span><span data-i18n="logCopy"></span></button>
-            <button class="tile" id="logExportBtn" type="button"><span class="tile-ic" data-icon="download"></span><span data-i18n="logExport"></span></button>
-            <button class="tile danger" id="logClearBtn" type="button"><span class="tile-ic" data-icon="trash"></span><span data-i18n="logClear"></span></button>
-          </div>
-          <label class="switch-row"><span dir="auto" data-i18n="verbose"></span><input type="checkbox" class="switch" id="verboseSwitch"></label>
-          <p class="fine-print" dir="auto" data-i18n="logWarning"></p>
-        </div>
-
         <div class="group">
-          <div class="group-head"><span class="group-icon" data-icon="plug"></span><h3 data-i18n="grpConnection"></h3></div>
-          <p class="group-help" dir="auto" data-i18n="connectionHelp"></p>
-          <details class="advanced-details">
-            <summary class="advanced-summary">
-              <span data-i18n="advancedSettings"></span>
-              <span data-icon="chevron-down" class="accordion-arrow"></span>
-            </summary>
-            <div class="advanced-content">
-              <label class="field"><span data-i18n="port"></span><input id="portInput" type="number" min="1" max="65535" inputmode="numeric"></label>
-              <label class="field">
-                <span data-i18n="token"></span>
-                <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" data-i18n-ph="tokenPlaceholder">
-                <small dir="auto" data-i18n="tokenOptionalHelp"></small>
-              </label>
-            </div>
-          </details>
+          <div class="group-head"><span class="group-icon" data-icon="message"></span><h3 data-i18n="grpPrefs"></h3></div>
+          <label class="field">
+            <span data-i18n="instructionsLabel"></span>
+            <textarea id="instructionsInput" rows="3" dir="auto" maxlength="2000" data-i18n-ph="instructionsPlaceholder"></textarea>
+            <small dir="auto" data-i18n="instructionsHelp"></small>
+          </label>
+          <label class="switch-row"><span dir="auto" data-i18n="notifyLabel"></span><input type="checkbox" class="switch" id="notifySwitch" checked></label>
+          <p class="settings-hint" dir="auto" data-i18n="hotkeyHint"></p>
         </div>
 
         <div class="group" id="grpSafety">
@@ -274,25 +241,57 @@
             <textarea id="allowProtectedInput" rows="2" dir="ltr" data-i18n-ph="allowProtectedPlaceholder"></textarea>
             <small dir="auto" data-i18n="allowProtectedHelp"></small>
           </label>
-        </div>
-
-        <div class="group">
-          <div class="group-head"><span class="group-icon" data-icon="message"></span><h3 data-i18n="grpAgent"></h3></div>
           <label class="field">
-            <span data-i18n="instructionsLabel"></span>
-            <textarea id="instructionsInput" rows="3" dir="auto" maxlength="2000" data-i18n-ph="instructionsPlaceholder"></textarea>
-            <small dir="auto" data-i18n="instructionsHelp"></small>
+            <span data-i18n="uploadRootsTitle"></span>
+            <textarea id="uploadRootsInput" rows="2" dir="ltr" spellcheck="false" data-i18n-ph="uploadRootsPlaceholder"></textarea>
+            <small dir="auto" data-i18n="uploadRootsHelp"></small>
           </label>
-          <label class="switch-row"><span data-i18n="notifyLabel"></span><input type="checkbox" class="switch" id="notifySwitch" checked></label>
-          <p class="settings-hint" dir="auto" data-i18n="hotkeyHint"></p>
         </div>
 
         <div class="group">
-          <div class="group-head"><span class="group-icon" data-icon="sparkles"></span><h3 data-i18n="grpDisplay"></h3></div>
-          <label class="switch-row"><span data-i18n="reduceMotion"></span><input type="checkbox" class="switch" id="motionSwitch"></label>
+          <div class="group-head"><span class="group-icon" data-icon="plug"></span><h3 data-i18n="grpConnection"></h3></div>
+          <p class="group-help" dir="auto" data-i18n="connectionHelp"></p>
+          <details class="advanced-details">
+            <summary class="advanced-summary">
+              <span data-i18n="advancedSettings"></span>
+              <span data-icon="chevron-down" class="accordion-arrow"></span>
+            </summary>
+            <div class="advanced-content">
+              <label class="field"><span data-i18n="port"></span><input id="portInput" type="number" min="1" max="65535" inputmode="numeric"></label>
+              <label class="field">
+                <span data-i18n="token"></span>
+                <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" data-i18n-ph="tokenPlaceholder">
+                <small dir="auto" data-i18n="tokenOptionalHelp"></small>
+              </label>
+            </div>
+          </details>
         </div>
 
-        <div class="group">
+        <div class="group log-group">
+          <div class="group-head">
+            <span class="group-icon" data-icon="log"></span>
+            <div>
+              <h3 data-i18n="grpLog"></h3>
+              <p class="group-help" dir="auto" data-i18n="logHelp"></p>
+            </div>
+          </div>
+          <button class="rec-toggle" id="recToggle" type="button" aria-pressed="false">
+            <span class="rec-dot" aria-hidden="true"></span>
+            <span class="rec-label" id="recLabel"></span>
+            <span class="rec-time" id="recTime"></span>
+          </button>
+          <p class="rec-meta" id="recMeta" dir="auto"></p>
+          <div class="tiles">
+            <button class="tile" id="logViewBtn" type="button"><span class="tile-ic" data-icon="list"></span><span data-i18n="logView"></span></button>
+            <button class="tile" id="logCopyBtn" type="button"><span class="tile-ic" data-icon="copy"></span><span data-i18n="logCopy"></span></button>
+            <button class="tile" id="logExportBtn" type="button"><span class="tile-ic" data-icon="download"></span><span data-i18n="logExport"></span></button>
+            <button class="tile danger" id="logClearBtn" type="button"><span class="tile-ic" data-icon="trash"></span><span data-i18n="logClear"></span></button>
+          </div>
+          <label class="switch-row"><span dir="auto" data-i18n="verbose"></span><input type="checkbox" class="switch" id="verboseSwitch"></label>
+          <p class="fine-print" dir="auto" data-i18n="logWarning"></p>
+        </div>
+
+        <div class="group group-plain">
           <button class="danger-btn" id="clearChatBtn" type="button"><span data-icon="trash"></span><span data-i18n="clearChat"></span></button>
         </div>
 
@@ -328,7 +327,7 @@
             <div class="about-meta-grid">
               <div class="about-meta-item">
                 <span class="meta-label" data-i18n="version"></span>
-                <span class="meta-value" id="aboutVersion">1.0.0</span>
+                <span class="meta-value" id="aboutVersion">1.1.0</span>
               </div>
               <div class="about-meta-item">
                 <span class="meta-label" data-i18n="license"></span>

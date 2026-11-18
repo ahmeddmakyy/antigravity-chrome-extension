@@ -30,7 +30,7 @@ import {
 import { BRIDGE_VERSION } from "./version.js";
 import { EXTENSION_ORIGIN, EXTENSION_ID } from "./constants.js";
 import { getDataDir } from "./paths.js";
-import { saveAttachment, cleanOldUploads, resolveUploadPaths } from "./upload-manager.js";
+import { saveAttachment, cleanOldUploads, resolveUploadPaths, saveUploadRoots } from "./upload-manager.js";
 import { safeEqual } from "./token.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -714,6 +714,18 @@ export class BridgeWSServer {
           const name = lang === "en" ? "English" : "Arabic (Egyptian)";
           this.pendingLanguageNote = `The user switched the side panel to ${name}. From now on write every intent, progress update and plan step in ${name}.`;
         }
+      }
+      return;
+    }
+
+    // The folders the user allowed for uploads, from the side panel settings (only the
+    // authenticated extension socket reaches this handler).
+    if (msg.type === "upload_roots") {
+      try {
+        const roots = saveUploadRoots(msg.roots);
+        this.logger.info(`[Uploads] ${roots.length} upload folder(s) allowed by the user.`);
+      } catch (err) {
+        this.logger.warn(`[Uploads] Could not save the upload folders: ${(err as Error).message}`);
       }
       return;
     }
@@ -1949,6 +1961,7 @@ export class BridgeWSServer {
       case "drag":
         return isAr ? `سحب وإفلات` : `Dragging`;
       case "upload_file":
+      case "upload_drop":
         return isAr ? `رفع ملف` : `Uploading file`;
       case "wait":
         return isAr ? `انتظار...` : `Waiting...`;
@@ -2205,7 +2218,7 @@ export class BridgeWSServer {
       );
     }
 
-    if (tool === "upload_file") {
+    if (tool === "upload_file" || tool === "upload_drop") {
       const resolved = resolveUploadPaths(params.paths);
       if (!resolved.ok) {
         throw new Error(resolved.error);

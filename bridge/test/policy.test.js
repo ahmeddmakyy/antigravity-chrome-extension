@@ -439,6 +439,44 @@ test("evaluateAction: manual vs auto risky actions matrix", () => {
   assert.equal(uploadAuto.decision, "allow");
   assert.equal(uploadAuto.code, "auto");
 
+  // upload_drop asks like upload_file
+  const dropManual = evaluateAction({ tool: "upload_drop", mode: "manual", tab, grants });
+  assert.equal(dropManual.decision, "ask");
+  assert.equal(dropManual.code, "upload");
+
+  // upload_file with a trigger: a "Select from computer" button is just the upload question,
+  // a "Share" button is asked about as a risky click first.
+  const triggerOk = evaluateAction({
+    tool: "upload_file",
+    params: { trigger_ref: "e5" },
+    mode: "manual",
+    tab,
+    grants,
+    element: { found: true, name: "Select from computer", tag: "button" },
+  });
+  assert.equal(triggerOk.code, "upload");
+  const triggerRisky = evaluateAction({
+    tool: "upload_file",
+    params: { trigger_ref: "e9" },
+    mode: "manual",
+    tab,
+    grants,
+    element: { found: true, name: "Share", tag: "button" },
+  });
+  assert.equal(triggerRisky.decision, "ask");
+  assert.equal(triggerRisky.code, "risky_click");
+
+  // wait for text or an enabled button reads the page, so it needs site access
+  const waitText = evaluateAction({
+    tool: "wait",
+    params: { condition: "enabled", value: "Next" },
+    mode: "manual",
+    tab: { id: 1, url: "https://www.instagram.com/" },
+    grants: { always: [], session: [] },
+  });
+  assert.equal(waitText.decision, "ask");
+  assert.equal(waitText.code, "site_access");
+
   // tabs_close
   const closeNonAgentManual = evaluateAction({
     tool: "tabs_close",
@@ -639,7 +677,7 @@ test("policy: redactTabs hides file and chrome tabs in manual mode only", () => 
 });
 
 test("policy: NO_PAGE tools list and KNOWN_TOOLS agree", () => {
-  assert.equal(KNOWN_TOOLS.size, 24);
+  assert.equal(KNOWN_TOOLS.size, 25);
   assert.ok(Array.isArray(NO_PAGE_TOOLS));
   for (const tool of NO_PAGE_TOOLS) {
     assert.ok(KNOWN_TOOLS.has(tool), `NO_PAGE tool "${tool}" must be in KNOWN_TOOLS`);

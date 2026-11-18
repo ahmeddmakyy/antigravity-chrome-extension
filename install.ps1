@@ -56,7 +56,15 @@ function Stop-OldHelper {
     } catch { return }
     if ("$answer".Trim() -ne "mychrome") { return }
     try {
-        $conn = Get-NetTCPConnection -LocalPort $PORT -State Listen -ErrorAction SilentlyContinue
+        # No -State filter: some Windows builds report the listening socket with an empty State.
+        # Every socket whose local port is 8765 belongs to the helper (clients use other ports).
+        $conn = Get-NetTCPConnection -LocalPort $PORT -ErrorAction SilentlyContinue
+        if (-not $conn) {
+            # Local address column only, so the clients connected to the helper (Chrome) are never matched.
+            $conn = netstat -ano -p tcp | Select-String "^\s*TCP\s+127\.0\.0\.1:$PORT\s" | ForEach-Object {
+                [pscustomobject]@{ OwningProcess = [int](($_.Line -split '\s+')[-1]) }
+            }
+        }
         foreach ($procId in ($conn.OwningProcess | Select-Object -Unique)) {
             if ($procId -gt 0 -and $procId -ne $PID) {
                 Write-Host "Stopping the running MyChrome helper (PID $procId)" -ForegroundColor Gray

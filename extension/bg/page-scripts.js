@@ -12,7 +12,7 @@
 // self-contained: it is serialized and runs in the page, not in the service worker.
 
 /** Accessibility-style list of elements with stable refs (e1, e2...). Unchanged from v3. */
-export const readPageScript = (filterMode) => {
+export const readPageScript = (filterMode, includeHidden) => {
   const win = window;
   win.__antigravityRefs = win.__antigravityRefs || { elemToRef: new WeakMap(), refToElem: new Map(), counter: 1 };
   const store = win.__antigravityRefs;
@@ -137,6 +137,40 @@ export const readPageScript = (filterMode) => {
 
   walk(document.body);
 
+  // File inputs are usually hidden behind a styled button (Instagram, TikTok, LinkedIn...).
+  // include_hidden lists them anyway, also inside open shadow roots and same-origin frames.
+  if (includeHidden) {
+    const files = [];
+    const collect = (root, depth) => {
+      if (!root || depth > 6) return;
+      for (const el of root.querySelectorAll("input[type=file]")) files.push(el);
+      for (const el of root.querySelectorAll("*")) {
+        if (el.shadowRoot) collect(el.shadowRoot, depth + 1);
+        if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
+          try { collect(el.contentDocument, depth + 1); } catch {}
+        }
+      }
+    };
+    collect(document, 0);
+    for (const el of files.slice(0, 20)) {
+      let ref = store.elemToRef.get(el);
+      if (!ref) {
+        ref = `e${store.counter++}`;
+        store.elemToRef.set(el, ref);
+        store.refToElem.set(ref, el);
+      }
+      if (elements.some((l) => l.startsWith(`${ref} `))) continue;
+      try { el.setAttribute("data-antigravity-ref", ref); } catch {}
+      let line = `${ref} input[file]`;
+      if (el.accept) line += ` accept=${quote(el.accept.slice(0, 80))}`;
+      if (el.multiple) line += " multiple";
+      if (el.disabled) line += " disabled";
+      if (!isVisible(el)) line += " hidden";
+      if (el.ownerDocument !== document) line += " in-frame";
+      elements.push(line);
+    }
+  }
+
   return {
     header: {
       url: location.href,
@@ -153,12 +187,33 @@ export const readPageScript = (filterMode) => {
 };
 
 /** Find elements whose text or label matches the query. Returns the most specific matches only. */
-export const findScript = (q) => {
+export const findScript = (q, includeHidden) => {
   const win = window;
   win.__antigravityRefs = win.__antigravityRefs || { elemToRef: new WeakMap(), refToElem: new Map(), counter: 1 };
   const store = win.__antigravityRefs;
   const query = String(q || "").toLowerCase().trim();
-  if (!query) return [];
+  // File inputs, hidden or not, also in open shadow roots and same-origin frames.
+  const fileInputs = () => {
+    const out = [];
+    const collect = (root, depth) => {
+      if (!root || depth > 6) return;
+      for (const el of root.querySelectorAll("input[type=file]")) out.push(el);
+      for (const el of root.querySelectorAll("*")) {
+        if (el.shadowRoot) collect(el.shadowRoot, depth + 1);
+        if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
+          try { collect(el.contentDocument, depth + 1); } catch {}
+        }
+      }
+    };
+    collect(document, 0);
+    return out.slice(0, 20).map((el) => {
+      let ref = store.elemToRef.get(el);
+      if (!ref) { ref = `e${store.counter++}`; store.elemToRef.set(el, ref); store.refToElem.set(ref, el); }
+      try { el.setAttribute("data-antigravity-ref", ref); } catch {}
+      return { ref, tag: "input", type: "file", accept: el.accept || "", multiple: el.multiple, hidden: true, inFrame: el.ownerDocument !== document };
+    });
+  };
+  if (!query) return includeHidden ? fileInputs() : [];
   const label = (el) => (el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.getAttribute("title") || el.getAttribute("alt") || "").toLowerCase();
   const own = (el) => {
     const l = label(el);
@@ -180,7 +235,7 @@ export const findScript = (q) => {
     if (childMatches && !label(el).includes(query)) continue;
     hits.push(el);
   }
-  return hits.slice(0, 25).map((el) => {
+  const found = hits.slice(0, 25).map((el) => {
     let ref = store.elemToRef.get(el);
     if (!ref) { ref = `e${store.counter++}`; store.elemToRef.set(el, ref); store.refToElem.set(ref, el); }
     el.setAttribute("data-antigravity-ref", ref);
@@ -194,6 +249,165 @@ export const findScript = (q) => {
       bounds: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) },
     };
   });
+  if (includeHidden) {
+    for (const f of fileInputs()) if (!found.some((x) => x.ref === f.ref)) found.push(f);
+  }
+  return found;
+};
+
+/**
+ * Finds the file input an upload goes to and marks it with a one-time attribute, so the service
+ * worker can locate the same node through the debugger (DOM.setFileInputFiles).
+ * target: { ref?, selector?, exts?: [".mp4", ...] }. With neither ref nor selector it picks the
+ * page's only file input, or the one whose accept fits the files.
+ */
+export const markFileInputScript = (target) => {
+  const store = window.__antigravityRefs;
+  const all = [];
+  const collect = (root, depth) => {
+    if (!root || depth > 6) return;
+    for (const el of root.querySelectorAll("input[type=file]")) all.push(el);
+    for (const el of root.querySelectorAll("*")) {
+      if (el.shadowRoot) collect(el.shadowRoot, depth + 1);
+      if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
+        try { collect(el.contentDocument, depth + 1); } catch {}
+      }
+    }
+  };
+  const deepQuery = (sel) => {
+    const hits = [];
+    const walk = (root, depth) => {
+      if (!root || depth > 6 || hits.length) return;
+      try { const el = root.querySelector(sel); if (el) { hits.push(el); return; } } catch { throw new Error(`Invalid selector: ${sel}`); }
+      for (const el of root.querySelectorAll("*")) {
+        if (el.shadowRoot) walk(el.shadowRoot, depth + 1);
+        if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
+          try { walk(el.contentDocument, depth + 1); } catch {}
+        }
+        if (hits.length) return;
+      }
+    };
+    walk(document, 0);
+    return hits[0] || null;
+  };
+  const isFileInput = (el) => el && el.tagName === "INPUT" && String(el.type).toLowerCase() === "file";
+  // A ref may point at the visible button or label around the input: use the input inside it.
+  const inputNear = (el) => {
+    if (!el) return null;
+    if (isFileInput(el)) return el;
+    if (el.tagName === "LABEL" && isFileInput(el.control)) return el.control;
+    const inside = el.querySelector ? el.querySelector("input[type=file]") : null;
+    if (inside) return inside;
+    if (el.shadowRoot) {
+      const sh = el.shadowRoot.querySelector("input[type=file]");
+      if (sh) return sh;
+    }
+    return null;
+  };
+  const MIME = {
+    ".mp4": "video/mp4", ".m4v": "video/x-m4v", ".mov": "video/quicktime", ".webm": "video/webm", ".avi": "video/x-msvideo",
+    ".mkv": "video/x-matroska", ".mpeg": "video/mpeg", ".mpg": "video/mpeg", ".3gp": "video/3gpp",
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif",
+    ".heic": "image/heic", ".heif": "image/heif", ".avif": "image/avif", ".bmp": "image/bmp", ".tif": "image/tiff", ".tiff": "image/tiff",
+    ".pdf": "application/pdf",
+  };
+  // Does the input's accept attribute take every file? (no accept = takes anything)
+  const fits = (el) => {
+    const accept = String(el.accept || "").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean);
+    if (!accept.length) return true;
+    return (target.exts || []).every((x) => {
+      const mime = MIME[x] || "";
+      return accept.some((a) => a === x || a === "*/*" || (mime && (a === mime || (a.endsWith("/*") && mime.startsWith(a.slice(0, -1))))));
+    });
+  };
+
+  let el = null;
+  if (target.ref) {
+    const byRef = (store && store.refToElem.get(target.ref)) || deepQuery(`[data-antigravity-ref="${target.ref}"]`);
+    if (!byRef) return { error: `No element with ref '${target.ref}'. Read the page again with read_page(include_hidden=true).` };
+    el = inputNear(byRef);
+    if (!el) return { error: `Ref '${target.ref}' is not a file input. Pass it as trigger_ref if it opens the file picker.` };
+  } else if (target.selector) {
+    el = inputNear(deepQuery(target.selector));
+    if (!el) return { error: `No file input matches '${target.selector}'.` };
+  } else {
+    collect(document, 0);
+    const usable = all.filter((x) => !x.disabled);
+    const matching = usable.filter(fits);
+    el = matching[0] || (usable.length === 1 ? usable[0] : null);
+    if (!el) {
+      return {
+        error: usable.length
+          ? `This page has ${usable.length} file inputs and none clearly accepts these files. Pass ref, selector or trigger_ref.`
+          : "This page has no file input yet. Open the platform's create or upload screen first, or pass trigger_ref (the button that opens the file picker).",
+      };
+    }
+  }
+  if (el.disabled) return { error: "That file input is disabled." };
+  const token = `u${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  el.setAttribute("data-mychrome-upload", token);
+  return { token, accept: el.accept || "", multiple: el.multiple, fits: fits(el) };
+};
+
+/** Creates a temporary hidden file input for a drop, next to the target, and returns its mark. */
+export const prepareDropScript = (targetRef) => {
+  const store = window.__antigravityRefs;
+  const target = (store && store.refToElem.get(targetRef)) || document.querySelector(`[data-antigravity-ref="${targetRef}"]`);
+  if (!target || !target.isConnected) return { error: `No element with ref '${targetRef}'. Read the page again.` };
+  const token = `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const input = target.ownerDocument.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+  input.setAttribute("data-mychrome-upload", token);
+  input.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none";
+  (target.ownerDocument.body || target.ownerDocument.documentElement).appendChild(input);
+  return { token };
+};
+
+/** Drops the files of the temporary input onto the target like a desktop drag, then removes it. */
+export const dispatchDropScript = (token, targetRef) => {
+  const store = window.__antigravityRefs;
+  const target = (store && store.refToElem.get(targetRef)) || document.querySelector(`[data-antigravity-ref="${targetRef}"]`);
+  const input = (target && target.ownerDocument.querySelector(`[data-mychrome-upload="${token}"]`)) || document.querySelector(`[data-mychrome-upload="${token}"]`);
+  if (!input) return { error: "The files did not reach the page." };
+  try {
+    if (!target || !target.isConnected) return { error: "The drop area is gone. Read the page again." };
+    const files = [...(input.files || [])];
+    if (!files.length) return { error: "The files did not reach the page." };
+    const dt = new DataTransfer();
+    for (const f of files) dt.items.add(f);
+    const r = target.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    const fire = (type) => {
+      const ev = new DragEvent(type, { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, dataTransfer: dt });
+      target.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    };
+    fire("dragenter");
+    fire("dragover");
+    const accepted = fire("drop");
+    return { dropped: files.map((f) => f.name), accepted };
+  } finally {
+    input.remove();
+  }
+};
+
+/** Wait helpers: does the text appear, is the button (by ref or by its text) clickable. */
+export const waitProbeScript = (cond, value) => {
+  const v = String(value || "").trim();
+  if (!v) return { ok: false };
+  if (cond === "text") return { ok: (document.body?.innerText || "").toLowerCase().includes(v.toLowerCase()) };
+  const store = window.__antigravityRefs;
+  let el = store && store.refToElem.get(v);
+  if (!el) {
+    const want = v.toLowerCase();
+    const named = (e) => (e.getAttribute("aria-label") || e.innerText || e.value || "").trim().replace(/\s+/g, " ").toLowerCase();
+    el = [...document.querySelectorAll("button, [role=button], input[type=submit], input[type=button], a[role=button], div[tabindex]")].find((e) => named(e) === want) || null;
+  }
+  if (!el || !el.isConnected) return { ok: false, found: false };
+  const disabled = el.disabled === true || el.getAttribute("aria-disabled") === "true" || el.closest("[aria-disabled=true], fieldset[disabled]") !== null;
+  return { ok: !disabled, found: true };
 };
 
 /** Readable text: prefer the main content region over menus and footers. */

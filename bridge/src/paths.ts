@@ -80,6 +80,17 @@ export function getLogsDir(fallbackDir?: string): string {
 }
 
 /**
+ * The helper's settings file (~/.gemini/mychrome/settings.json). Written by the helper when the user
+ * changes a setting in the side panel; the user can also edit it by hand.
+ */
+export function getSettingsPath(): string {
+  if (process.env.MYCHROME_SETTINGS_FILE) {
+    return path.resolve(process.env.MYCHROME_SETTINGS_FILE);
+  }
+  return path.join(getDataDir(), "settings.json");
+}
+
+/**
  * Resolves the uploads directory (~/.gemini/mychrome/uploads).
  */
 export function getUploadsDir(fallbackDir?: string): string {

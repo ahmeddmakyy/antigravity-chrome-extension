@@ -57,6 +57,7 @@ export const KNOWN_TOOLS = Object.freeze(
     "tabs_create",
     "tabs_list",
     "type",
+    "upload_drop",
     "upload_file",
     "wait",
     "zoom",
@@ -533,7 +534,8 @@ export function evaluateAction(input) {
 
     // wait reads the page for these two conditions.
     const readsPage =
-      !NO_PAGE_TOOLS.includes(tool) || (tool === "wait" && (params.condition === "selector" || params.condition === "network_idle"));
+      !NO_PAGE_TOOLS.includes(tool) ||
+      (tool === "wait" && ["selector", "network_idle", "text", "enabled"].includes(params.condition));
 
     // A page tool on a tab that is not a web page (about:blank popups, file: pages, data: URLs):
     // there is no site to check the protected list and grants against, so refuse.
@@ -670,7 +672,18 @@ export function evaluateAction(input) {
       };
     }
 
-    if (tool === "upload_file") {
+    // upload_file with trigger_ref clicks that element: a "Post" or "Pay" button is asked about
+    // as the click it is, before the upload question.
+    if (tool === "upload_file" && params.trigger_ref && (element?.isSubmit === true || isRiskyName(element?.name))) {
+      return {
+        decision: "ask",
+        code: "risky_click",
+        host: targetHost,
+        reason: `Approval required: opening the file picker clicks "${element?.name || "a submit button"}".`,
+      };
+    }
+
+    if (tool === "upload_file" || tool === "upload_drop") {
       return {
         decision: "ask",
         code: "upload",

@@ -11,7 +11,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { FileAttachment, SavedAttachment } from "./types.js";
-import { getUploadsDir } from "./paths.js";
+import { getSettingsPath, getUploadsDir } from "./paths.js";
 
 const WINDOWS_RESERVED = new Set([
   "CON", "PRN", "AUX", "NUL",
@@ -43,18 +43,93 @@ const ALLOWED_EXTENSIONS = new Set([
 ]);
 
 export const UPLOAD_RESTRICTION_ERROR =
-  "upload_file only accepts files the user attached in the MyChrome panel (they are stored in the MyChrome uploads folder); ask the user to attach the file in the panel and use the path from the attachment.";
+  "upload_file and upload_drop only accept files from the folders the user allowed: files attached in the MyChrome panel, and the upload folders listed in MyChrome settings (Safety > Folders the agent can upload from). Ask the user to attach the file in the panel, or to add its folder to that list.";
+
+// Files given by path are never read by MyChrome: Chrome reads them from disk when the page
+// uploads them, so they can be large (a video). Panel attachments travel over the socket, which is
+// why they keep the 10 MB limit above.
+export const MAX_PATH_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024; // 4 GB
+export const MAX_PATH_UPLOAD_FILES = 20;
+
+const PATH_UPLOAD_EXTENSIONS = new Set([
+  ...ALLOWED_EXTENSIONS,
+  // more images
+  ".heic", ".heif", ".avif", ".bmp", ".tif", ".tiff",
+  // video
+  ".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv", ".mpeg", ".mpg", ".3gp",
+  // audio
+  ".mp3", ".m4a", ".wav", ".aac", ".ogg",
+  // subtitles and documents platforms accept next to media
+  ".srt", ".vtt", ".doc", ".ppt", ".xls",
+]);
+
+/** Reads the helper's settings file; a missing or broken file counts as empty. */
+export function readHelperSettings(): { uploadRoots?: unknown } {
+  try {
+    const raw = fs.readFileSync(getSettingsPath(), "utf8");
+    const parsed = JSON.parse(raw.replace(/^﻿/, ""));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Cleans a list of folders: absolute paths only, no duplicates, at most 20. */
+export function cleanUploadRoots(list: unknown): string[] {
+  const raw = Array.isArray(list) ? list : typeof list === "string" ? list.split(/[;\n]/) : [];
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const p = item.trim().replace(/^"(.*)"$/, "$1");
+    if (!p || !path.isAbsolute(p)) continue;
+    const norm = path.resolve(p);
+    if (!out.some((o) => (process.platform === "win32" ? o.toLowerCase() === norm.toLowerCase() : o === norm))) out.push(norm);
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+/** Saves the folders the user allowed in the panel to the helper's settings file. */
+export function saveUploadRoots(list: unknown): string[] {
+  const roots = cleanUploadRoots(list);
+  const file = getSettingsPath();
+  const current = readHelperSettings();
+  const next = { ...current, uploadRoots: roots };
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  const tmp = `${file}.tmp.${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 });
+  fs.renameSync(tmp, file);
+  return roots;
+}
 
 /**
- * Resolves and validates file paths for upload_file tool.
- * Only accepts existing regular files that live inside the MyChrome uploads folder.
+ * Folders files may be uploaded from: the MyChrome uploads folder (panel attachments), the folders
+ * in MYCHROME_UPLOAD_ROOTS (separated by ";"), and the folders the user added in the panel.
+ */
+export function getUploadRoots(): string[] {
+  return [
+    getUploadsDir(),
+    ...cleanUploadRoots(process.env.MYCHROME_UPLOAD_ROOTS || ""),
+    ...cleanUploadRoots(readHelperSettings().uploadRoots),
+  ];
+}
+
+const fold = (p: string) => (process.platform === "win32" ? p.toLowerCase() : p);
+
+/**
+ * Resolves and validates file paths for upload_file and upload_drop.
+ * Accepts existing regular files of a media or document type, up to 4 GB each, whose real path
+ * (after links and "..") is inside one of the allowed folders.
  */
 export function resolveUploadPaths(
   paths: unknown,
-  uploadsRoot?: string
+  roots?: string | string[]
 ): { ok: true; paths: string[] } | { ok: false; error: string } {
-  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 5) {
+  if (!Array.isArray(paths) || paths.length === 0) {
     return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  }
+  if (paths.length > MAX_PATH_UPLOAD_FILES) {
+    return { ok: false, error: `At most ${MAX_PATH_UPLOAD_FILES} files can be uploaded at once.` };
   }
   for (const p of paths) {
     if (typeof p !== "string" || !p.trim()) {
@@ -62,34 +137,39 @@ export function resolveUploadPaths(
     }
   }
 
-  const root = uploadsRoot ?? getUploadsDir();
-  let realRoot: string;
-  try {
-    if (!fs.existsSync(root)) {
-      return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
-    }
-    realRoot = fs.realpathSync(root);
-  } catch {
-    return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+  const realRoots: string[] = [];
+  for (const root of roots === undefined ? getUploadRoots() : ([] as string[]).concat(roots)) {
+    try {
+      if (fs.existsSync(root) && fs.statSync(root).isDirectory()) realRoots.push(fold(fs.realpathSync(root)));
+    } catch {}
   }
+  if (realRoots.length === 0) return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
 
-  const rootForRel = process.platform === "win32" ? realRoot.toLowerCase() : realRoot;
   const resolvedPaths: string[] = [];
-
   for (const rawPath of paths as string[]) {
+    const shown = path.basename(rawPath);
     try {
       if (!fs.existsSync(rawPath)) {
-        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+        return { ok: false, error: `File not found: ${rawPath}` };
       }
       const realFilePath = fs.realpathSync(rawPath);
       const stat = fs.statSync(realFilePath);
       if (!stat.isFile()) {
+        return { ok: false, error: `Not a file: ${rawPath}` };
+      }
+      const inside = realRoots.some((root) => {
+        const rel = path.relative(root, fold(realFilePath));
+        return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+      });
+      if (!inside) {
         return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
       }
-      const fileForRel = process.platform === "win32" ? realFilePath.toLowerCase() : realFilePath;
-      const rel = path.relative(rootForRel, fileForRel);
-      if (rel.startsWith("..") || path.isAbsolute(rel) || rel === "") {
-        return { ok: false, error: UPLOAD_RESTRICTION_ERROR };
+      const ext = path.extname(realFilePath).toLowerCase();
+      if (!PATH_UPLOAD_EXTENSIONS.has(ext)) {
+        return { ok: false, error: `${shown}: this file type (${ext || "no extension"}) cannot be uploaded. Images, video, audio, PDF, text and Office files can.` };
+      }
+      if (stat.size > MAX_PATH_UPLOAD_BYTES) {
+        return { ok: false, error: `${shown} is larger than 4 GB.` };
       }
       resolvedPaths.push(realFilePath);
     } catch {
